@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import glob
+import json
+import hashlib
 import os
 
 import numpy as np
 import torch
 
 from .kinematics import G1Kinematics
+from .robot import JOINT_NAMES, ROBOT_NAME
 from .rotations import mat_to_6d, quat_slerp, quat_to_mat, so3_log, yaw_mat
 
 CONTROL_DT = 0.02
@@ -19,23 +22,33 @@ class MotionLib:
     def __init__(self, files: list[str], kin: G1Kinematics, device: str, src_fps: float = 30.0):
         self.device = device
         self.names = [os.path.splitext(os.path.basename(f))[0] for f in files]
-        ps, qs, js = [], [], []
+        ps, qs, js, vs = [], [], [], []
         lens = []
         for f in files:
-            raw = torch.tensor(np.loadtxt(f, delimiter=","), dtype=torch.float32)
-            p, q_xyzw, j = raw[:, :3], raw[:, 3:7], raw[:, 7:36]
-            quat = torch.cat((q_xyzw[:, 3:4], q_xyzw[:, :3]), -1)
+            velocities = None
+            if f.endswith(".npz"):
+                p, quat, j, velocities, clip_fps = _load_npz(f)
+            else:
+                if ROBOT_NAME != "g1":
+                    raise ValueError("CSV joint layout is only defined for G1")
+                raw = torch.tensor(np.loadtxt(f, delimiter=","), dtype=torch.float32)
+                p, q_xyzw, j = raw[:, :3], raw[:, 3:7], raw[:, 7:36]
+                quat = torch.cat((q_xyzw[:, 3:4], q_xyzw[:, :3]), -1)
+                clip_fps = src_fps
+            if len(p) < 2:
+                raise ValueError(f"Motion must contain at least two frames: {f}")
             # resample to 50 Hz
-            T_src = raw.shape[0]
-            dur = (T_src - 1) / src_fps
+            T_src = p.shape[0]
+            dur = (T_src - 1) / clip_fps
             n = int(np.floor(dur / CONTROL_DT)) + 1
-            t = torch.arange(n, dtype=torch.float32) * CONTROL_DT * src_fps
+            t = torch.arange(n, dtype=torch.float32) * CONTROL_DT * clip_fps
             i0 = torch.clamp(t.floor().long(), max=T_src - 2)
             a = (t - i0.float()).clamp(0, 1)
             p = p[i0] * (1 - a[:, None]) + p[i0 + 1] * a[:, None]
             j = j[i0] * (1 - a[:, None]) + j[i0 + 1] * a[:, None]
             quat = quat_slerp(quat[i0], quat[i0 + 1], a)
             ps.append(p), qs.append(quat), js.append(j)
+            vs.append(tuple(x[i0] * (1-a[:,None]) + x[i0+1] * a[:,None] for x in velocities) if velocities is not None else None)
             lens.append(n)
         self.clip_len = torch.tensor(lens, device=device)
         self.clip_start = torch.cumsum(torch.cat((torch.zeros(1, dtype=torch.long), torch.tensor(lens[:-1], dtype=torch.long))), 0).to(device)  # dtype: one clip gives an empty (float) tensor
@@ -44,7 +57,7 @@ class MotionLib:
         self.clip_id = torch.cat([torch.full((n,), i, dtype=torch.long) for i, n in enumerate(lens)]).to(device)
 
         root_p, root_R, root_v, root_w, jq, jqd = [], [], [], [], [], []
-        for p, quat, j in zip(ps, qs, js):
+        for p, quat, j, supplied_vel in zip(ps, qs, js, vs):
             R = quat_to_mat(quat)
             v = _gradient(p, CONTROL_DT)
             qd = _gradient(j, CONTROL_DT)
@@ -53,6 +66,8 @@ class MotionLib:
             w[1:-1] = so3_log(R[2:] @ R[:-2].transpose(-1, -2)) / (2 * CONTROL_DT)
             w[0] = so3_log(R[1] @ R[0].T) / CONTROL_DT
             w[-1] = so3_log(R[-1] @ R[-2].T) / CONTROL_DT
+            if supplied_vel is not None:
+                v, w, qd = supplied_vel
             root_p.append(p), root_R.append(R), root_v.append(v), root_w.append(w), jq.append(j), jqd.append(qd)
         cat = lambda xs: torch.cat(xs).to(device)  # noqa: E731
         self.root_p, self.root_R, self.root_v, self.root_w = cat(root_p), cat(root_R), cat(root_v), cat(root_w)
@@ -88,7 +103,9 @@ class MotionLib:
 
     @staticmethod
     def from_dir(path: str, kin: G1Kinematics, device: str) -> MotionLib:
-        files = sorted(glob.glob(os.path.join(path, "*.csv")))
+        files = [path] if os.path.isfile(path) else sorted(glob.glob(os.path.join(path, "*.csv")) + glob.glob(os.path.join(path, "*.npz")))
+        if not files:
+            raise FileNotFoundError(f"No motion files found at {path}")
         return MotionLib(files, kin, device)
 
     def future_frames(self, f: torch.Tensor, K: int) -> torch.Tensor:
@@ -119,3 +136,32 @@ def _gradient(x: torch.Tensor, dt: float) -> torch.Tensor:
     g[0] = (x[1] - x[0]) / dt
     g[-1] = (x[-1] - x[-2]) / dt
     return g
+
+
+def _load_npz(path):
+    """Read a validated, named NPZ in wxyz convention and reorder to simulator joints."""
+    metadata = path + '.metadata.json'
+    if not os.path.isfile(metadata):
+        raise ValueError(f"Missing validated motion metadata: {metadata}; run tools/prepare_tiangong3.py first")
+    with open(metadata) as stream:
+        meta = json.load(stream)
+    if meta['robot'] != ROBOT_NAME or meta['quaternion_format'] != 'wxyz':
+        raise ValueError('Motion metadata does not match selected robot/quaternion format')
+    with open(path, 'rb') as stream:
+        if hashlib.sha256(stream.read()).hexdigest() != meta['sha256']:
+            raise ValueError('Motion file changed; regenerate its validation metadata')
+    with np.load(path, allow_pickle=False) as data:
+        order = [meta['joint_names'].index(n) for n in JOINT_NAMES]
+        root = meta['root_body_index']
+        def tensor(key):
+            x = np.asarray(data[key], dtype=np.float32)
+            if not np.isfinite(x).all(): raise ValueError(f'Nonfinite {key}')
+            return torch.from_numpy(x.copy())
+        p, quat = tensor('body_pos_w')[:,root], tensor('body_quat_w')[:,root]
+        q, qd = tensor('joint_pos')[:,order], tensor('joint_vel')[:,order]
+        v, w = tensor('body_lin_vel_w')[:,root], tensor('body_ang_vel_w')[:,root]
+        fps = float(data['fps'].reshape(-1)[0])
+    if fps <= 0 or len(p) != len(q): raise ValueError('Invalid NPZ fps/frame count')
+    if not torch.allclose(quat.norm(dim=-1), torch.ones(len(quat)), atol=1e-3):
+        raise ValueError('NPZ root quaternions are not normalized')
+    return p, quat, q, (v,w,qd), fps

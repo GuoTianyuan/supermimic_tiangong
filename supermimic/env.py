@@ -22,7 +22,7 @@ from isaaclab.utils import configclass, instantiate, replace
 
 from .mdp import MAX_STEP_REWARD, MDP, flatten_state
 from .motion import CONTROL_DT, MotionLib
-from .robot import G1_CFG, G1_JOINT_NAMES, action_scale
+from .robot import G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
 from .rotations import mat_to_quat, quat_to_mat, so3_exp
 
 
@@ -62,7 +62,7 @@ class TrackingSim:
         dev = self.device
         self.default_q = self.robot.data.default_joint_pos.torch[0].clone()
         self.alpha = torch.tensor([action_scale(n) for n in G1_JOINT_NAMES], device=dev)
-        self.torso_id = self.robot.find_bodies("torso_link")[0][0]
+        self.torso_id = self.robot.find_bodies(TORSO_BODY)[0][0]
 
         # ---- sim context xi = [friction, joint offsets(29), torso com offset(3)] ----
         self.xi = torch.zeros(self.N, 33, device=dev)

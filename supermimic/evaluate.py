@@ -25,10 +25,12 @@ parser.add_argument("--run_dir", type=str, required=True)
 parser.add_argument("--watch", action="store_true")
 parser.add_argument("--ckpt", type=str, default=None, help="evaluate one checkpoint")
 parser.add_argument("--record", type=str, default=None, help="save trajectories (npz) for rendering")
-parser.add_argument("--motion_dir", type=str, default=os.path.join(REPO, "data", "lafan1_g1"))
+parser.add_argument("--motion_dir", type=str, default=None, help="Motion directory or a single CSV/NPZ file")
 parser.add_argument("--every", type=int, default=1, help="evaluate every n-th checkpoint")
+parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
 add_launcher_args(parser)
 args = parser.parse_args()
+os.environ["SUPERMIMIC_ROBOT"] = args.robot
 
 import numpy as np
 import torch
@@ -39,7 +41,8 @@ from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP
 from supermimic.motion import MotionLib
 from supermimic.networks import Policy
-from supermimic.robot import default_joint_pos_list
+from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list
+args.motion_dir = args.motion_dir or DEFAULT_MOTION
 
 torch.backends.cuda.matmul.allow_tf32 = True
 dev = "cuda:0"
@@ -52,6 +55,8 @@ C = len(motion.names)
 @torch.no_grad()
 def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
     a_ = ck["args"]
+    if a_.get("robot", "g1") != args.robot:
+        raise ValueError("Checkpoint robot does not match --robot")
     K, Hh = a_["goal_frames"], a_["hist"]
     networks.AMP_DTYPE = torch.bfloat16 if a_.get("amp", "none") == "bf16" else None
     pi = Policy(OBS_DIM, 73 * K, hist=Hh).to(dev)

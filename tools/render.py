@@ -19,12 +19,13 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
-MJCF = os.path.join(ROOT, "data", "g1_description", "g1_29dof.xml")
+ROBOT = os.environ.get('SUPERMIMIC_ROBOT', 'g1')
+MJCF = os.path.join(ROOT, "data", "tiangong3_generated", "tiangong3.xml") if ROBOT == 'tiangong3' else os.path.join(ROOT, "data", "g1_description", "g1_29dof.xml")
 
 
 def two_robot_xml() -> str:
     xml = open(MJCF).read()
-    xml = re.sub(r'meshdir="[^"]*"', 'meshdir="' + os.path.join(ROOT, 'data', 'g1_description') + '/"', xml)
+    xml = re.sub(r'meshdir="[^"]*"', 'meshdir="' + os.path.dirname(os.path.abspath(MJCF)) + '/"', xml)
     body = xml[xml.index('<body name="pelvis"') : xml.index("</worldbody>")]
     ghost = re.sub(r' name="([^"]+)"', r' name="ref_\1"', body)
     ghost = re.sub(r'rgba="[^"]*"', 'rgba="0.35 0.65 1.0 0.25"', ghost)
@@ -106,7 +107,7 @@ def main():
             label = f"{a.title}  {clip}  t={(f - int(d['clip_start'][c])) * 0.02:5.1f}s"
             if fell_at is not None:
                 label += "  [terminated]"
-            for xy, txt in (((16, 12), label), ((16, a.height - 38), "solid: simulated G1 policy (Isaac Lab + MuJoCo-Warp)   blue ghost: reference")):
+            for xy, txt in (((16, 12), label), ((16, a.height - 38), "solid: simulated policy (Isaac Lab + MuJoCo-Warp)   blue ghost: reference")):
                 bb = draw.textbbox(xy, txt, font=font)
                 draw.rectangle((bb[0] - 6, bb[1] - 4, bb[2] + 6, bb[3] + 4), fill=(255, 255, 255))
                 draw.text(xy, txt, fill=(20, 20, 20), font=font)

@@ -10,8 +10,11 @@ from isaaclab.app import add_launcher_args, launch_simulation
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--num_envs", type=int, default=64)
+parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
+parser.add_argument("--motion_dir", default=None)
 add_launcher_args(parser)
 args = parser.parse_args()
+os.environ["SUPERMIMIC_ROBOT"] = args.robot
 
 import torch
 
@@ -19,13 +22,13 @@ from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import MDP
 from supermimic.motion import MotionLib
-from supermimic.robot import TRACKED_BODIES, default_joint_pos_list
+from supermimic.robot import TRACKED_BODIES, DEFAULT_MOTION, default_joint_pos_list
 from supermimic.rotations import quat_to_mat, rot_angle_sq
 
 dev = "cuda:0"
 kin = G1Kinematics(dev)
 t0 = time.time()
-motion = MotionLib.from_dir(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "lafan1_g1"), kin, dev)
+motion = MotionLib.from_dir(args.motion_dir or DEFAULT_MOTION, kin, dev)
 print(f"motion: {len(motion.names)} clips, {motion.num_frames} frames ({motion.num_frames * 0.02 / 3600:.2f} h), bins {motion.num_bins}, load {time.time() - t0:.1f}s")
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
 sim_cfg = make_sim(dev, args)
