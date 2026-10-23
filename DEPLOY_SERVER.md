@@ -85,6 +85,14 @@ ssh -p 2210 -N -L 16006:127.0.0.1:16006 root@10.108.3.194   # 然后打开 http:
   --motion_dir data/wbc_two --ckpt logs/wbc_two_v1/ckpt_016000.pt --record logs/wbc_two_v1/traj.npz
 ```
 
+全量训练用 `data/wbc_eval`（从 `data/wbc_partial` 固定种子抽的 256 条，1.2 h）评估；`--watch` 会持续评估新的
+checkpoint，结果写入 `logs/<run>/eval.csv`（`--every` 按每 2000 次迭代一个 checkpoint 计数）：
+
+```bash
+./sm_native.sh run --gpu 7 --robot tiangong3 python supermimic/evaluate.py --run_dir logs/wbc_full_v1 \
+  --motion_dir data/wbc_eval --watch --every 5
+```
+
 ## 已验证
 
 - torch 2.11.0+cu130 识别 8 张 H800；Isaac Lab/Newton 仿真自检：状态往返误差 0，FK 位置误差 1.4e-5 m。
