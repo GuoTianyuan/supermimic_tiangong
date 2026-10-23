@@ -28,19 +28,21 @@ docker build --network=host \
 
 ## 运行
 
+所有命令都通过 `./sm.sh` 在一次性容器中运行，结束后容器自动删除，不占内存和端口：
+
 ```bash
-bash docker/run_container.sh 1 40g
+./sm.sh status    # 运行中的容器、端口、内存、各 GPU 占用和训练进度
+./sm.sh stop <run> | --all
 ```
 
-容器已存在时，使用 `docker start supermimic`，不要重复创建。
-运行中需保留足够宿主内存；40 GiB 是上限，不是预留。
+内存上限用 `--mem`（训练默认 24g），是上限不是预留。
 
 ## 资产转换与检查
 
 ```bash
-docker exec supermimic python tools/urdf_to_mjcf.py
-docker exec supermimic python tools/mjcf_to_usd.py
-docker exec supermimic python tools/test_env.py --num_envs 64
+./sm.sh run --gpu 1 python tools/urdf_to_mjcf.py
+./sm.sh run --gpu 1 python tools/mjcf_to_usd.py
+./sm.sh run --gpu 1 python tools/test_env.py --num_envs 64
 ```
 
 ## 训练
@@ -48,17 +50,18 @@ docker exec supermimic python tools/test_env.py --num_envs 64
 先小规模验证：
 
 ```bash
-bash run_train.sh smoke_5090 --num_envs 256 --buffer_steps 128 \
+./sm.sh train smoke_5090 --gpu 1 --num_envs 256 --buffer_steps 128 \
   --wm_batch 256 --pi_batch 256 --iterations 600 --ckpt_every 200 --log_every 20
 ```
 
 正式训练候选配置（需根据实际资源调整）：
 
 ```bash
-bash run_train.sh lafan1_5090 --num_envs 1024 --buffer_steps 1000 \
+./sm.sh train lafan1_5090 --gpu 1 --mem 40g --num_envs 1024 --buffer_steps 1000 \
   --wm_batch 1024 --pi_batch 1024 --iterations 16000
-tail -f logs/lafan1_5090/stdout.log
 ```
+
+训练在前台打印进度块；`Ctrl+C` 保存 checkpoint 后退出，`-d` 改为后台运行（`./sm.sh logs <run>` 查看）。
 
 ## 已完成的验证
 
@@ -77,17 +80,13 @@ tail -f logs/lafan1_5090/stdout.log
 ## 评估与渲染
 
 ```bash
-docker exec supermimic python supermimic/evaluate.py \
+./sm.sh run --gpu 1 python supermimic/evaluate.py \
   --run_dir logs/lafan1_5090 --ckpt logs/lafan1_5090/ckpt_016000.pt \
   --record logs/lafan1_5090/traj.npz
-docker exec -e MUJOCO_GL=egl supermimic python tools/render.py \
+./sm.sh run --gpu 1 python tools/render.py \
   logs/lafan1_5090/traj.npz logs/lafan1_5090/dance.mp4 \
   --clips dance2_subject1 --seconds 10
 ```
 
-容器以 root 运行，新生成文件可能归 root 所有。需要从宿主编辑时可运行：
-
-```bash
-docker exec supermimic chown -R 1000:1000 /workspace/supermimic/logs
-```
+容器以宿主用户（uid 1000）运行，生成的文件归当前用户所有。
 

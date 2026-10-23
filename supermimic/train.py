@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import signal
 import sys
 import time
 
@@ -48,14 +49,30 @@ add_launcher_args(parser)
 args = parser.parse_args()
 os.environ["SUPERMIMIC_ROBOT"] = args.robot
 
+STOP = {"signals": 0}
+
+
+def _request_stop(sig, _frame):
+    STOP["signals"] += 1
+    if STOP["signals"] > 1:
+        raise KeyboardInterrupt
+    print(f"\n[{signal.Signals(sig).name}] Stopping after the current iteration and saving a checkpoint "
+          "(send it again to quit without saving).", flush=True)
+
+
+# The launcher's shell ignores SIGINT/SIGTERM so tee keeps logging; these handlers replace the inherited SIG_IGN.
+signal.signal(signal.SIGINT, _request_stop)
+signal.signal(signal.SIGTERM, _request_stop)
+
 import torch
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
 
 from supermimic.buffer import ReplayBuffer
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import CRITIC_EXTRA, INV_DIM, MDP, OBS_DIM, invariant_features, normalize_xi, unflatten_state
-from supermimic.motion import MotionLib
+from supermimic.motion import CONTROL_DT, MotionLib
 import supermimic.networks as networks
 from supermimic.networks import Critic, Policy, WorldModel
 from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list
@@ -146,6 +163,52 @@ def lr_at(it: int) -> float:
 def set_requires_grad(m: nn.Module, flag: bool):
     for p in m.parameters():
         p.requires_grad_(flag)
+
+
+CSV_FIELDS = ["iteration", "wall_h", "sim_steps", "wm_loss", "wm_err8", "pi_loss", "v_loss", "imag_rew", "pi_gradnorm",
+              "imag_survival", "sim_rew", "ep_len", "ep_ret_norm", "term_frac", "it_per_s", "lr"]  # fmt: skip
+
+
+def _hms(seconds: float) -> str:
+    s = int(max(seconds, 0))
+    return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def _rss_gb() -> float:
+    with open("/proc/self/status") as f:
+        return next(int(line.split()[1]) for line in f if line.startswith("VmRSS")) / 2**20
+
+
+def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float, eta_s: float, last_ckpt: str):
+    width, pad = 80, 34
+    policy = r["iteration"] > args.wm_only_iters
+    title = f"Learning iteration {r['iteration']}/{args.iterations}  ({'world model + policy' if policy else 'world-model warm-up'})"
+    free, total = torch.cuda.mem_get_info()
+    lines = [("World model loss / 8-step error", f"{r['wm_loss']:.4f} / {r['wm_err8']:.4f}")]
+    if policy:
+        lines += [("Policy loss / grad norm", f"{r['pi_loss']:.3f} / {r['pi_gradnorm']:.3f}"),
+                  ("Critic loss", f"{r['v_loss']:.4f}"),
+                  ("Imagined reward / survival", f"{r['imag_rew']:.3f} / {r['imag_survival']:.3f}")]  # fmt: skip
+    else:
+        lines.append(("Policy updates", f"start after iteration {args.wm_only_iters}"))
+    lines.append(("Sim reward per step", f"{r['sim_rew']:.3f}"))
+    if n_done:
+        lines += [("Mean episode length", f"{r['ep_len']:.1f} steps ({r['ep_len'] * CONTROL_DT:.1f} s)"),
+                  ("Mean episode return (normalized)", f"{r['ep_ret_norm']:.3f}"),
+                  ("Terminated (fell) episodes", f"{100 * r['term_frac']:.0f}% of {n_done:.0f} finished")]  # fmt: skip
+    else:
+        lines.append(("Episodes", "none finished in this window"))
+    footer = [("Sim steps", f"{r['sim_steps']:,}"),
+              ("Speed", f"{r['it_per_s']:.2f} it/s, {steps_per_s:,.0f} sim steps/s"),
+              ("Learning rate", f"{r['lr']:.2e}"),
+              ("GPU memory", f"torch {torch.cuda.memory_reserved() / 2**30:.1f} GB, device {(total - free) / 2**30:.1f}/{total / 2**30:.1f} GB used"),
+              ("Host RAM (RSS)", f"{_rss_gb():.1f} GB"),
+              ("Last checkpoint", last_ckpt),
+              ("Time elapsed", _hms(elapsed_s)),
+              ("ETA", _hms(eta_s))]  # fmt: skip
+    out = ["#" * width, " " * max((width - len(title)) // 2, 0) + f"\033[1m{title}\033[0m", ""]
+    out += [f"{k + ':':>{pad}} {v}" for k, v in lines] + ["-" * width] + [f"{k + ':':>{pad}} {v}" for k, v in footer]
+    print("\n".join(out), flush=True)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -294,17 +357,51 @@ with launch_simulation(sim_cfg, args):
                 stats["term"].append(out["term"].float().sum())
                 stats["done"].append(out["done"].float().sum())
 
+    def save_checkpoint(n_it: int) -> str:
+        ck = {"wm": wm.state_dict(), "pi": pi.state_dict(), "critic": critic.state_dict(), "opt_wm": opt_wm.state_dict(),
+              "opt_pi": opt_pi.state_dict(), "opt_v": opt_v.state_dict(), "iteration": n_it,
+              "wall_time": time.time() - t_start, "sim_steps": sim_steps, "args": vars(args),
+              "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
+        last = os.path.join(args.log_dir, "last.pt")
+        torch.save(ck, last + ".tmp")
+        os.replace(last + ".tmp", last)
+        small = {k: ck[k] for k in ("pi", "wm", "iteration", "wall_time", "sim_steps", "args", "saved_at")}
+        path = os.path.join(args.log_dir, f"ckpt_{n_it:06d}.pt")
+        torch.save(small, path + ".tmp")
+        os.replace(path + ".tmp", path)
+        print(f"Saved checkpoint {path} (and last.pt)", flush=True)
+        return path
+
+    tb_url = os.environ.get("SUPERMIMIC_TB_URL")
+    print("=" * 80)
+    print(f" SuperMimic training | run {os.path.basename(os.path.normpath(args.log_dir))} | robot {args.robot} | {torch.cuda.get_device_name(0)}")
+    print(f" Motion {args.motion_dir}: {len(motion.names)} clips, {motion.num_frames} frames")
+    print(f" {args.num_envs} envs | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
+          f" | checkpoint every {args.ckpt_every}")
+    print(f" Logs {args.log_dir}" + (f" | TensorBoard {tb_url}" if tb_url else ""))
+    print(" Ctrl+C: stop after the current iteration and save a checkpoint")
+    print("=" * 80, flush=True)
+
     stats = {"r": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
-    if start_it == 0:
-        collect(args.warmup_steps, stats)
+    # The replay buffer is not checkpointed, so a resumed run refills it before sampling world-model windows.
+    print(f"Collecting {args.warmup_steps} warm-up steps; the first iterations compile kernels with torch.compile...", flush=True)
+    collect(args.warmup_steps, stats)
     log_f = open(os.path.join(args.log_dir, "train_log.csv"), "a")
     if start_it == 0:
-        log_f.write("iteration,wall_h,sim_steps,wm_loss,wm_err8,pi_loss,v_loss,imag_rew,pi_gradnorm,imag_survival,sim_rew,ep_len,ep_ret_norm,term_frac,it_per_s,lr\n")
+        log_f.write(",".join(CSV_FIELDS) + "\n")
+    tb = SummaryWriter(os.path.join(args.log_dir, "tensorboard"), purge_step=start_it or None, flush_secs=10)
     t_start = time.time() - wall_offset
-    t_log = time.time()
+    t_session = t_log = time.time()
+    steps_log = sim_steps
     step_acc = 0.0
     agg = {"wm": [], "wm8": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": []}
+    done_it = saved_it = start_it
+    last_ckpt = "none yet"
     for it in range(start_it, args.iterations):
+        if STOP["signals"]:
+            break
+        if it == args.wm_only_iters and it > start_it:
+            print(f"World-model warm-up done; policy and critic updates start at iteration {it + 1} (first ones compile kernels).", flush=True)
         lr = lr_at(it)
         for o in (opt_wm, opt_pi, opt_v):
             for gparam in o.param_groups:
@@ -329,29 +426,35 @@ with launch_simulation(sim_cfg, args):
                 torch.cuda.synchronize(); tp3 = time.time()
                 print(f"[prof] collect {1e3*(tp1-tp0):.0f} ms ({n} steps) | wm {1e3*(tp2-tp1):.0f} ms | policy+critic {1e3*(tp3-tp2):.0f} ms", flush=True)
             agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
-        if (it + 1) % args.log_every == 0:
+        done_it = it + 1
+        if it == start_it:
+            print(f"First iteration done after {time.time() - t_session:.0f} s; progress is printed every {args.log_every} iterations.", flush=True)
+        if done_it % args.log_every == 0:
             mean = lambda x: float(sum(float(v) for v in x) / max(len(x), 1))  # noqa: E731
-            ips = args.log_every / (time.time() - t_log)
-            t_log = time.time()
-            wall_h = (time.time() - t_start) / 3600
-            term_frac = float(sum(float(v) for v in stats["term"]) / max(sum(float(v) for v in stats["done"]), 1))
-            row = [it + 1, wall_h, sim_steps, mean(agg["wm"]), mean(agg["wm8"]), mean(agg["pi"]), mean(agg["v"]), mean(agg["ir"]),
+            now = time.time()
+            ips = args.log_every / (now - t_log)
+            sps = (sim_steps - steps_log) / (now - t_log)
+            t_log, steps_log = now, sim_steps
+            n_done = sum(float(v) for v in stats["done"])
+            term_frac = float(sum(float(v) for v in stats["term"]) / max(n_done, 1))
+            row = [done_it, (now - t_start) / 3600, sim_steps, mean(agg["wm"]), mean(agg["wm8"]), mean(agg["pi"]), mean(agg["v"]), mean(agg["ir"]),
                    mean(agg["gn"]), mean(agg["surv"]), mean(stats["r"]), mean(stats["ep_len"]), mean(stats["ep_ret"]), term_frac, ips, lr]  # fmt: skip
             log_f.write(",".join(f"{x:.6g}" if isinstance(x, float) else str(x) for x in row) + "\n")
             log_f.flush()
-            print(f"it {it + 1} | {wall_h:.3f} h | wm {row[3]:.4f} e8 {row[4]:.4f} | pi {row[5]:.3f} v {row[6]:.4f} imag_r {row[7]:.3f} surv {row[9]:.3f} "
-                  f"| sim_r {row[10]:.3f} ep_len {row[11]:.1f} ep_ret {row[12]:.3f} term {term_frac:.2f} | {ips:.2f} it/s", flush=True)  # fmt: skip
+            for k, v in zip(CSV_FIELDS[1:], row[1:]):
+                tb.add_scalar("train/" + k, v, done_it)
+            eta = (now - t_session) / (done_it - start_it) * (args.iterations - done_it)
+            print_progress(dict(zip(CSV_FIELDS, row)), n_done, sps, now - t_start, eta, last_ckpt)
             stats = {k: [] for k in stats}
             agg = {k: [] for k in agg}
-        if (it + 1) % args.ckpt_every == 0 or it + 1 == args.iterations:
-            ck = {"wm": wm.state_dict(), "pi": pi.state_dict(), "critic": critic.state_dict(), "opt_wm": opt_wm.state_dict(),
-                  "opt_pi": opt_pi.state_dict(), "opt_v": opt_v.state_dict(), "iteration": it + 1,
-                  "wall_time": time.time() - t_start, "sim_steps": sim_steps, "args": vars(args),
-                  "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
-            last = os.path.join(args.log_dir, "last.pt")
-            torch.save(ck, last + ".tmp")
-            os.replace(last + ".tmp", last)
-            small = {k: ck[k] for k in ("pi", "wm", "iteration", "wall_time", "sim_steps", "args", "saved_at")}
-            path = os.path.join(args.log_dir, f"ckpt_{it + 1:06d}.pt")
-            torch.save(small, path + ".tmp")
-            os.replace(path + ".tmp", path)
+        if done_it % args.ckpt_every == 0 or done_it == args.iterations:
+            last_ckpt, saved_it = save_checkpoint(done_it), done_it
+    if done_it > saved_it:
+        save_checkpoint(done_it)
+    tb.close()
+    log_f.close()
+    finished = done_it == args.iterations
+    print(f"Training {'finished' if finished else 'stopped'} at iteration {done_it}/{args.iterations} "
+          f"({_hms(time.time() - t_start)} total).", flush=True)
+    if not finished and done_it > 0:
+        print(f"Resume with: --resume {os.path.join(args.log_dir, 'last.pt')}", flush=True)

@@ -30,7 +30,7 @@ Progress and timestamps: [MILESTONES.md](MILESTONES.md).
 | Path | What |
 |---|---|
 | `IsaacLab/` | Isaac Lab `main` @ 46d6cc3 (VERSION 3.0.0), unmodified — cloned by `tools/setup.sh`, not tracked |
-| `docker/` | `Dockerfile`: `supermimic:latest` = `isaac-lab-kitless:main-46d6cc3` (built from `IsaacLab/docker/Dockerfile.kitless`) + tmux, ffmpeg, gcc (for `torch.compile`); `run_container.sh` |
+| `docker/` | `Dockerfile`: `supermimic:latest` = `isaac-lab-kitless:main-46d6cc3` (built from `IsaacLab/docker/Dockerfile.kitless`) + tmux, ffmpeg, gcc (for `torch.compile`); containers are started by `sm.sh` |
 | `data/` | not tracked; `tools/download_data.sh` fetches LAFAN1 G1 retargets (HF `lvhaidong/LAFAN1_Retargeting_Dataset`) and the G1 URDF/meshes, then builds `g1_29dof.xml` (MJCF) and the USD |
 | `supermimic/` | implementation (see below) |
 | `tools/` | setup, asset conversion, tests, benchmark, plotting, rendering, failure analysis |
@@ -68,10 +68,11 @@ git -C IsaacLab checkout 46d6cc3d7b115906fad12efd372fbf69f4e3d3ed
 docker build -t supermimic:latest docker/     # + tmux, ffmpeg, gcc, NVIDIA EGL vendor file
 ```
 
-Then start the long-lived container (repository mounted at `/workspace/supermimic`):
+Every command then runs through `./sm.sh` in a fresh container (repository mounted at
+`/workspace/supermimic`, host uid) that is removed when the command exits:
 
 ```bash
-docker/run_container.sh 0 128g     # GPU index 0, 128 GB memory cap
+./sm.sh status     # running containers, ports, RAM, per-GPU memory, training progress
 ```
 
 ### 2. Data: LAFAN1 motions and the G1 model
@@ -81,7 +82,7 @@ docker/run_container.sh 0 128g     # GPU index 0, 128 GB memory cap
 | 40 LAFAN1 clips retargeted to the 29-DoF G1 (30 fps CSV: root pos, root quat xyzw, 29 joint angles) | HF [`lvhaidong/LAFAN1_Retargeting_Dataset`](https://huggingface.co/datasets/lvhaidong/LAFAN1_Retargeting_Dataset), folder `g1/` | CC BY-NC-ND 4.0 (Ubisoft La Forge) | `data/lafan1_g1/*.csv` |
 | G1 description `g1_29dof_rev_1_0.urdf` + meshes (the model the clips were retargeted to) | same dataset, folder `robot_description/g1/` | BSD-3-Clause (Unitree) | `data/g1_description/` |
 
-With the container from step 1 running:
+With the image from step 1 built:
 
 ```bash
 tools/download_data.sh
@@ -108,19 +109,24 @@ Check: `ls data/lafan1_g1 | wc -l` prints `40`, and the clips total 264,705 fram
 simulator should agree to ~1e-6):
 
 ```bash
-docker exec supermimic python tools/test_env.py
+./sm.sh run python tools/test_env.py
 ```
 
 ## Usage
 
 ```bash
-CPUS=0-23 ./run_train.sh lafan1_main          # training in tmux session 'lafan1_main' (optional CPU pinning)
-docker exec -it supermimic tmux attach -t lafan1_main
-docker exec supermimic tmux new -d -s eval_main "cd /workspace/supermimic && python supermimic/evaluate.py --run_dir logs/lafan1_main --watch"
-docker exec supermimic python tools/plot.py logs/lafan1_main --out results/success_curve.png
-docker exec supermimic python supermimic/evaluate.py --run_dir logs/lafan1_main --ckpt logs/lafan1_main/ckpt_014000.pt --record traj.npz
-docker exec supermimic python tools/render.py traj.npz out.mp4 --clips dance2_subject1 --seconds 10
+CPUS=0-23 ./sm.sh train lafan1_main --gpu 0   # foreground; Ctrl+C saves a checkpoint and removes the container
+./sm.sh train lafan1_main --gpu 0 -d          # background instead; ./sm.sh logs lafan1_main, ./sm.sh stop lafan1_main
+./sm.sh train lafan1_main --resume logs/lafan1_main/last.pt
+./sm.sh run python supermimic/evaluate.py --run_dir logs/lafan1_main --watch
+./sm.sh run python tools/plot.py logs/lafan1_main --out results/success_curve.png
+./sm.sh run python supermimic/evaluate.py --run_dir logs/lafan1_main --ckpt logs/lafan1_main/ckpt_014000.pt --record traj.npz
+./sm.sh run python tools/render.py traj.npz out.mp4 --clips dance2_subject1 --seconds 10
+./sm.sh tb lafan1_main                        # TensorBoard of existing runs; Ctrl+C closes it
 ```
+
+Training prints a progress block every `--log_every` iterations and serves TensorBoard for the run
+from the same container at the `http://127.0.0.1:<port>` printed at start-up.
 
 The first iterations are slow while `torch.compile` builds its kernels (cached in `.cache/`).
 Checkpoints are written every 2000 iterations to `logs/<run>/`; the eval watcher scores each on all
@@ -177,8 +183,7 @@ Evaluation return 0.824 at 1.24 h of training (paper: 0.82 at 1.2 h on an H100) 
 * Do not run under a virtual-memory `ulimit -v`: Isaac Lab + Warp reserve ~430 GB of *virtual*
   address space (CUDA VA reservations; RSS ~3 GB) and Warp's CUDA-graph capture needs its mempool,
   which cannot initialize under such a limit. Cap memory with the container's cgroup
-  (`--memory`) instead. Rootless docker ignores `--cpuset-cpus`; pin CPUs with `taskset`
-  (`CPUS=...` in `run_train.sh`).
+  (`--memory`, `--mem` in `sm.sh`) instead. Pin CPUs with `CPUS=...` (`--cpuset-cpus`).
 * Asset import: the kit-less URDF/MJCF importers fail inside a running Isaac Lab process
   (`PhysxJointAPI` schema not registered), so the USD is converted once, offline, by
   `tools/mjcf_to_usd.py` (registers the importer's schema plugin first) and spawned with
