@@ -1,8 +1,15 @@
-"""SuperMimic training (Algorithm A.1): collect -> fit world model -> BPTT policy + critic update."""
+"""SuperMimic training (Algorithm A.1): collect -> fit world model -> BPTT policy + critic update.
+
+Multi-GPU: one process per GPU (RANK / WORLD_SIZE / MASTER_ADDR / MASTER_PORT, each process seeing a
+single GPU, as started by ``sm_native.sh train --gpu 0,1,...``). Every rank simulates its own
+``--num_envs`` environments on its own shard of the motion files; gradients and normalizers are
+averaged over ranks, so the networks stay identical and see all motions.
+"""
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import math
 import os
@@ -12,11 +19,13 @@ import time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
+RANK, WORLD = int(os.environ.get("RANK", 0)), int(os.environ.get("WORLD_SIZE", 1))
+MAIN = RANK == 0
 
 from isaaclab.app import add_launcher_args, launch_simulation
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--num_envs", type=int, default=4096)
+parser.add_argument("--num_envs", type=int, default=4096, help="environments per GPU")
 parser.add_argument("--iterations", type=int, default=320_000)
 parser.add_argument("--buffer_steps", type=int, default=1000)
 parser.add_argument("--utd", type=float, default=0.4, help="updates per vectorized simulator step")
@@ -65,6 +74,7 @@ signal.signal(signal.SIGINT, _request_stop)
 signal.signal(signal.SIGTERM, _request_stop)
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
@@ -83,11 +93,19 @@ torch.backends.cudnn.allow_tf32 = True
 torch.manual_seed(args.seed)
 networks.AMP_DTYPE = torch.bfloat16 if args.amp == "bf16" else None
 dev = "cuda:0"
+if WORLD > 1:
+    # Ranks load their motion shards at different speeds before the first collective.
+    dist.init_process_group("nccl", device_id=torch.device(dev), timeout=datetime.timedelta(hours=2))
+args.world_size = WORLD
 os.makedirs(args.log_dir, exist_ok=True)
-json.dump(vars(args), open(os.path.join(args.log_dir, "args.json"), "w"), indent=2)
+if MAIN:
+    json.dump(vars(args), open(os.path.join(args.log_dir, "args.json"), "w"), indent=2)
 
 kin = G1Kinematics(dev)
-motion = MotionLib.from_dir(args.motion_dir, kin, dev)
+t_load = time.time()
+motion = MotionLib.from_dir(args.motion_dir, kin, dev, RANK, WORLD)
+print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frames} frames, "
+      f"loaded in {time.time() - t_load:.0f} s", flush=True)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
 K, Hh, HZ = args.goal_frames, args.hist, args.horizon
 GOAL_DIM = 73 * K
@@ -107,6 +125,35 @@ if args.resume:
     wm.load_state_dict(ck["wm"]), pi.load_state_dict(ck["pi"]), critic.load_state_dict(ck["critic"])
     opt_wm.load_state_dict(ck["opt_wm"]), opt_pi.load_state_dict(ck["opt_pi"]), opt_v.load_state_dict(ck["opt_v"])
     start_it, wall_offset, sim_steps = ck["iteration"], ck["wall_time"], ck["sim_steps"]
+if WORLD > 1:
+    for t in (*wm.state_dict().values(), *pi.state_dict().values(), *critic.state_dict().values()):
+        dist.broadcast(t, 0)
+    torch.manual_seed(args.seed + RANK)  # different envs, noise and minibatches on every rank
+    shard = torch.tensor([len(motion.names), motion.num_frames], device=dev)
+    dist.all_reduce(shard)
+    num_clips, num_frames = shard.tolist()
+else:
+    num_clips, num_frames = len(motion.names), motion.num_frames
+
+
+def sync_grads(m: nn.Module):
+    """Average gradients over ranks before clipping, so every rank takes the same optimizer step."""
+    if WORLD == 1:
+        return
+    ps = list(m.parameters())
+    flat = torch.cat([(p.grad if p.grad is not None else torch.zeros_like(p)).reshape(-1) for p in ps])
+    dist.all_reduce(flat, op=dist.ReduceOp.AVG)
+    for p, g in zip(ps, flat.split([p.numel() for p in ps])):
+        p.grad = g.view_as(p)
+
+
+def stop_requested() -> bool:
+    """A stop signal on any rank stops all ranks after the same iteration."""
+    if WORLD == 1:
+        return bool(STOP["signals"])
+    flag = torch.tensor(STOP["signals"], device=dev)
+    dist.all_reduce(flag, op=dist.ReduceOp.MAX)
+    return bool(flag)
 
 
 # per-component floors on the error normalization (pos, rot, lin vel, ang vel, q, qd increments)
@@ -201,7 +248,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
     footer = [("Sim steps", f"{r['sim_steps']:,}"),
               ("Speed", f"{r['it_per_s']:.2f} it/s, {steps_per_s:,.0f} sim steps/s"),
               ("Learning rate", f"{r['lr']:.2e}"),
-              ("GPU memory", f"torch {torch.cuda.memory_reserved() / 2**30:.1f} GB, device {(total - free) / 2**30:.1f}/{total / 2**30:.1f} GB used"),
+              ("GPU memory" + (" (rank 0)" if WORLD > 1 else ""), f"torch {torch.cuda.memory_reserved() / 2**30:.1f} GB, device {(total - free) / 2**30:.1f}/{total / 2**30:.1f} GB used"),
               ("Host RAM (RSS)", f"{_rss_gb():.1f} GB"),
               ("Last checkpoint", last_ckpt),
               ("Time elapsed", _hms(elapsed_s)),
@@ -218,6 +265,7 @@ def wm_update():
     loss, e_last = wm_err(S_hat, w["s1"], w["mask"])
     opt_wm.zero_grad(set_to_none=True)
     loss.backward()
+    sync_grads(wm)
     nn.utils.clip_grad_norm_(wm.parameters(), 1.0)
     opt_wm.step()
     m = w["mask"][:, -1]
@@ -280,6 +328,7 @@ def policy_update():
         torch.cuda.synchronize(); tq1 = time.time()
     opt_pi.zero_grad(set_to_none=True)
     loss.backward()
+    sync_grads(pi)
     if PROFILE:
         torch.cuda.synchronize(); tq2 = time.time()
     gn = nn.utils.clip_grad_norm_(pi.parameters(), 1.0)
@@ -316,6 +365,7 @@ def policy_update():
                 v_loss = ((critic(Xf[idx]) - Yf[idx]) ** 2).mean()
                 opt_v.zero_grad(set_to_none=True)
                 v_loss.backward()
+                sync_grads(critic)
                 nn.utils.clip_grad_norm_(critic.parameters(), 1.0)
                 opt_v.step()
     if PROFILE:
@@ -349,7 +399,7 @@ with launch_simulation(sim_cfg, args):
             S0, S1 = unflatten_state(out["s"]), unflatten_state(out["s1"])
             wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"])))
             wm.out_norm.update(wm.targets(S0, S1))
-            sim_steps += args.num_envs
+            sim_steps += args.num_envs * WORLD
             stats["r"].append(out["r"].mean() / 0.1)
             if "ep_len" in out:
                 stats["ep_len"].append(out["ep_len"].mean())
@@ -358,6 +408,9 @@ with launch_simulation(sim_cfg, args):
                 stats["done"].append(out["done"].float().sum())
 
     def save_checkpoint(n_it: int) -> str:
+        path = os.path.join(args.log_dir, f"ckpt_{n_it:06d}.pt")
+        if not MAIN:
+            return path
         ck = {"wm": wm.state_dict(), "pi": pi.state_dict(), "critic": critic.state_dict(), "opt_wm": opt_wm.state_dict(),
               "opt_pi": opt_pi.state_dict(), "opt_v": opt_v.state_dict(), "iteration": n_it,
               "wall_time": time.time() - t_start, "sim_steps": sim_steps, "args": vars(args),
@@ -366,30 +419,34 @@ with launch_simulation(sim_cfg, args):
         torch.save(ck, last + ".tmp")
         os.replace(last + ".tmp", last)
         small = {k: ck[k] for k in ("pi", "wm", "iteration", "wall_time", "sim_steps", "args", "saved_at")}
-        path = os.path.join(args.log_dir, f"ckpt_{n_it:06d}.pt")
         torch.save(small, path + ".tmp")
         os.replace(path + ".tmp", path)
         print(f"Saved checkpoint {path} (and last.pt)", flush=True)
         return path
 
     tb_url = os.environ.get("SUPERMIMIC_TB_URL")
-    print("=" * 80)
-    print(f" SuperMimic training | run {os.path.basename(os.path.normpath(args.log_dir))} | robot {args.robot} | {torch.cuda.get_device_name(0)}")
-    print(f" Motion {args.motion_dir}: {len(motion.names)} clips, {motion.num_frames} frames")
-    print(f" {args.num_envs} envs | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
-          f" | checkpoint every {args.ckpt_every}")
-    print(f" Logs {args.log_dir}" + (f" | TensorBoard {tb_url}" if tb_url else ""))
-    print(" Ctrl+C: stop after the current iteration and save a checkpoint")
-    print("=" * 80, flush=True)
+    if MAIN:
+        envs = f"{args.num_envs} envs" + (f" per GPU x {WORLD} GPUs = {args.num_envs * WORLD}" if WORLD > 1 else "")
+        print("=" * 80)
+        print(f" SuperMimic training | run {os.path.basename(os.path.normpath(args.log_dir))} | robot {args.robot} | {torch.cuda.get_device_name(0)}")
+        print(f" Motion {args.motion_dir}: {num_clips} clips, {num_frames} frames" + (f" (split over {WORLD} GPUs)" if WORLD > 1 else ""))
+        print(f" {envs} | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
+              f" | checkpoint every {args.ckpt_every}")
+        print(f" Logs {args.log_dir}" + (f" | TensorBoard {tb_url}" if tb_url else ""))
+        print(" Ctrl+C: stop after the current iteration and save a checkpoint")
+        print("=" * 80, flush=True)
 
     stats = {"r": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
     # The replay buffer is not checkpointed, so a resumed run refills it before sampling world-model windows.
-    print(f"Collecting {args.warmup_steps} warm-up steps; the first iterations compile kernels with torch.compile...", flush=True)
+    if MAIN:
+        print(f"Collecting {args.warmup_steps} warm-up steps; the first iterations compile kernels with torch.compile...", flush=True)
     collect(args.warmup_steps, stats)
-    log_f = open(os.path.join(args.log_dir, "train_log.csv"), "a")
-    if start_it == 0:
-        log_f.write(",".join(CSV_FIELDS) + "\n")
-    tb = SummaryWriter(os.path.join(args.log_dir, "tensorboard"), purge_step=start_it or None, flush_secs=10)
+    log_f = tb = None
+    if MAIN:
+        log_f = open(os.path.join(args.log_dir, "train_log.csv"), "a")
+        if start_it == 0:
+            log_f.write(",".join(CSV_FIELDS) + "\n")
+        tb = SummaryWriter(os.path.join(args.log_dir, "tensorboard"), purge_step=start_it or None, flush_secs=10)
     t_start = time.time() - wall_offset
     t_session = t_log = time.time()
     steps_log = sim_steps
@@ -398,9 +455,9 @@ with launch_simulation(sim_cfg, args):
     done_it = saved_it = start_it
     last_ckpt = "none yet"
     for it in range(start_it, args.iterations):
-        if STOP["signals"]:
+        if stop_requested():
             break
-        if it == args.wm_only_iters and it > start_it:
+        if it == args.wm_only_iters and it > start_it and MAIN:
             print(f"World-model warm-up done; policy and critic updates start at iteration {it + 1} (first ones compile kernels).", flush=True)
         lr = lr_at(it)
         for o in (opt_wm, opt_pi, opt_v):
@@ -427,34 +484,45 @@ with launch_simulation(sim_cfg, args):
                 print(f"[prof] collect {1e3*(tp1-tp0):.0f} ms ({n} steps) | wm {1e3*(tp2-tp1):.0f} ms | policy+critic {1e3*(tp3-tp2):.0f} ms", flush=True)
             agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
         done_it = it + 1
-        if it == start_it:
+        if it == start_it and MAIN:
             print(f"First iteration done after {time.time() - t_session:.0f} s; progress is printed every {args.log_every} iterations.", flush=True)
         if done_it % args.log_every == 0:
             mean = lambda x: float(sum(float(v) for v in x) / max(len(x), 1))  # noqa: E731
+            total = lambda x: float(sum(float(v) for v in x))  # noqa: E731
             now = time.time()
             ips = args.log_every / (now - t_log)
             sps = (sim_steps - steps_log) / (now - t_log)
             t_log, steps_log = now, sim_steps
-            n_done = sum(float(v) for v in stats["done"])
-            term_frac = float(sum(float(v) for v in stats["term"]) / max(n_done, 1))
-            row = [done_it, (now - t_start) / 3600, sim_steps, mean(agg["wm"]), mean(agg["wm8"]), mean(agg["pi"]), mean(agg["v"]), mean(agg["ir"]),
-                   mean(agg["gn"]), mean(agg["surv"]), mean(stats["r"]), mean(stats["ep_len"]), mean(stats["ep_ret"]), term_frac, ips, lr]  # fmt: skip
-            log_f.write(",".join(f"{x:.6g}" if isinstance(x, float) else str(x) for x in row) + "\n")
-            log_f.flush()
-            for k, v in zip(CSV_FIELDS[1:], row[1:]):
-                tb.add_scalar("train/" + k, v, done_it)
-            eta = (now - t_session) / (done_it - start_it) * (args.iterations - done_it)
-            print_progress(dict(zip(CSV_FIELDS, row)), n_done, sps, now - t_start, eta, last_ckpt)
+            # losses and per-step rewards are averaged over ranks; episode statistics are pooled
+            vals = [mean(agg[k]) for k in ("wm", "wm8", "pi", "v", "ir", "gn", "surv")] + [mean(stats["r"])]
+            pooled = [total(stats["ep_len"]), total(stats["ep_ret"]), float(len(stats["ep_len"])), total(stats["term"]), total(stats["done"])]
+            if WORLD > 1:
+                t = torch.tensor(vals + pooled, dtype=torch.float64, device=dev)
+                dist.all_reduce(t)
+                vals, pooled = [x / WORLD for x in t[: len(vals)].tolist()], t[len(vals) :].tolist()
+            ep_len_sum, ep_ret_sum, n_ep, n_term, n_done = pooled
+            row = [done_it, (now - t_start) / 3600, sim_steps, *vals, ep_len_sum / max(n_ep, 1), ep_ret_sum / max(n_ep, 1),
+                   n_term / max(n_done, 1), ips, lr]  # fmt: skip
+            if MAIN:
+                log_f.write(",".join(f"{x:.6g}" if isinstance(x, float) else str(x) for x in row) + "\n")
+                log_f.flush()
+                for k, v in zip(CSV_FIELDS[1:], row[1:]):
+                    tb.add_scalar("train/" + k, v, done_it)
+                eta = (now - t_session) / (done_it - start_it) * (args.iterations - done_it)
+                print_progress(dict(zip(CSV_FIELDS, row)), n_done, sps, now - t_start, eta, last_ckpt)
             stats = {k: [] for k in stats}
             agg = {k: [] for k in agg}
         if done_it % args.ckpt_every == 0 or done_it == args.iterations:
             last_ckpt, saved_it = save_checkpoint(done_it), done_it
     if done_it > saved_it:
         save_checkpoint(done_it)
-    tb.close()
-    log_f.close()
-    finished = done_it == args.iterations
-    print(f"Training {'finished' if finished else 'stopped'} at iteration {done_it}/{args.iterations} "
-          f"({_hms(time.time() - t_start)} total).", flush=True)
-    if not finished and done_it > 0:
-        print(f"Resume with: --resume {os.path.join(args.log_dir, 'last.pt')}", flush=True)
+    if MAIN:
+        tb.close()
+        log_f.close()
+        finished = done_it == args.iterations
+        print(f"Training {'finished' if finished else 'stopped'} at iteration {done_it}/{args.iterations} "
+              f"({_hms(time.time() - t_start)} total).", flush=True)
+        if not finished and done_it > 0:
+            print(f"Resume with: --resume {os.path.join(args.log_dir, 'last.pt')}", flush=True)
+    if WORLD > 1:
+        dist.destroy_process_group()

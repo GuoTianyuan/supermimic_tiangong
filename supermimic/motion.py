@@ -102,10 +102,14 @@ class MotionLib:
             self.frame_bin[s:e] = b
 
     @staticmethod
-    def from_dir(path: str, kin: G1Kinematics, device: str) -> MotionLib:
+    def from_dir(path: str, kin: G1Kinematics, device: str, rank: int = 0, world: int = 1) -> MotionLib:
+        """Load all motions, or with ``world > 1`` every ``world``-th file starting at ``rank``
+        (all files on every rank when there are fewer files than ranks)."""
         files = [path] if os.path.isfile(path) else sorted(glob.glob(os.path.join(path, "*.csv")) + glob.glob(os.path.join(path, "*.npz")))
         if not files:
             raise FileNotFoundError(f"No motion files found at {path}")
+        if len(files) >= world:
+            files = files[rank::world]
         return MotionLib(files, kin, device)
 
     def future_frames(self, f: torch.Tensor, K: int) -> torch.Tensor:

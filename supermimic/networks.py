@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 
 from .mdp import INV_DIM, NUM_J, XI_DIM, invariant_features
@@ -22,7 +23,11 @@ def mlp(inp: int, hidden: list[int], out: int, act=nn.ELU, layer_norm: bool = Fa
 
 
 class RunningNorm(nn.Module):
-    """Running mean/std normalizer; updated from data without gradients, frozen after ``max_count``."""
+    """Running mean/std normalizer; updated from data without gradients, frozen after ``max_count``.
+
+    Under torch.distributed every rank must call ``update`` together; the batch statistics are merged
+    across ranks so all ranks keep identical normalizers.
+    """
 
     def __init__(self, dim: int, max_count: float = 2e8, eps: float = 1e-2):
         super().__init__()
@@ -38,6 +43,11 @@ class RunningNorm(nn.Module):
             return
         n = x.shape[0]
         m, v = x.mean(0), x.var(0, unbiased=False)
+        if dist.is_initialized() and dist.get_world_size() > 1:
+            s = torch.cat((x.new_tensor([n]), m * n, (v + m * m) * n)).double()
+            dist.all_reduce(s)
+            mg = s[1 : 1 + m.numel()] / s[0]
+            n, m, v = s[0].item(), mg.float(), (s[1 + m.numel() :] / s[0] - mg * mg).clamp(min=0).float()
         tot = self.count + n
         delta = m - self.mean
         self.mean += delta * n / tot
