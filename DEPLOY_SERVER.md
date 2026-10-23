@@ -91,6 +91,25 @@ checkpoint，结果写入 `logs/<run>/eval.csv`（`--every` 按每 2000 次迭�
 ```bash
 ./sm_native.sh run --gpu 7 --robot tiangong3 python supermimic/evaluate.py --run_dir logs/wbc_full_v1 \
   --motion_dir data/wbc_eval --watch --every 5
+## 带域随机化训练（第 3–7 步）
+
+各项含义、实现和验收方法见 `DEPLOY_TIANGONG3.md` 的“真机部署前的域随机化”。服务器上在训练命令末尾加 `--dr`：
+
+```bash
+./sm_native.sh train wbc_two_dr_pd --gpu 0 --robot tiangong3 --motion_dir data/wbc_two \
+  --num_envs 1024 --buffer_steps 1000 --wm_batch 1024 --pi_batch 1024 --iterations 16000 --ckpt_every 500 --dr pd
+```
+
+- 多卡训练同样加 `--dr`。replay buffer 每 1024 个环境多占约 0.6 GB，每卡 16384 环境时多约 9.6 GB。
+- 不带 `--dr` 的训练与之前完全一样，`wbc_full_v1` 可以照常 `--resume`。
+- 基线和 DR 策略在同一组随机参数下评估：
+
+```bash
+./sm_native.sh run --gpu 0 --robot tiangong3 python supermimic/evaluate.py --run_dir logs/wbc_two_dr_pd \
+  --motion_dir data/wbc_two --ckpt logs/wbc_two_v1/ckpt_016000.pt logs/wbc_two_dr_pd/ckpt_016000.pt \
+  --dr all --repeats 16 --seed 0
+./sm_native.sh run --robot tiangong3 python tools/sim2sim_mujoco.py --device cpu --motion_dir data/wbc_two \
+  --ckpt logs/wbc_two_dr_pd/ckpt_016000.pt --delay_ms 10 --joint_friction 0.3 --push
 ```
 
 ## 已验证

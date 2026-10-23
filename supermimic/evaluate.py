@@ -4,6 +4,11 @@ Each motion plays once from its first frame with friction 1.0, no domain randomi
 observation or action noise. A motion fails if the rollout triggers the training termination.
 Normalized return is the undiscounted reward sum divided by its maximum attainable value.
 
+``--dr`` keeps randomization, for deployment checks: ``base`` is the training randomization of
+friction, joint offsets and torso COM plus observation noise, and supermimic/dr.py terms (or ``all``)
+come on top of it. Each motion then plays ``--repeats`` times with its own draws, and every checkpoint
+evaluated with the same ``--seed`` (several ``--ckpt``, or a run's checkpoints) meets the same draws.
+
 Run as a watcher: ``python supermimic/evaluate.py --run_dir logs/<run> --watch``.
 """
 
@@ -23,11 +28,15 @@ from isaaclab.app import add_launcher_args, launch_simulation
 parser = argparse.ArgumentParser()
 parser.add_argument("--run_dir", type=str, required=True)
 parser.add_argument("--watch", action="store_true")
-parser.add_argument("--ckpt", type=str, default=None, help="evaluate one checkpoint")
+parser.add_argument("--ckpt", type=str, nargs="+", default=None, help="evaluate these checkpoints")
 parser.add_argument("--record", type=str, default=None, help="save trajectories (npz) for rendering")
 parser.add_argument("--motion_dir", type=str, default=None, help="Motion directory or a single CSV/NPZ file")
 parser.add_argument("--every", type=int, default=1, help="evaluate every n-th checkpoint")
 parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
+parser.add_argument("--dr", type=str, default="none", help="none: nominal | base: training randomization and observation "
+                    "noise | base plus supermimic/dr.py terms (comma list, or all)")  # fmt: skip
+parser.add_argument("--repeats", type=int, default=1, help="rollouts per motion, each with its own random draws (with --dr)")
+parser.add_argument("--seed", type=int, default=0, help="seed of the random draws, the same for every checkpoint")
 add_launcher_args(parser)
 args = parser.parse_args()
 os.environ["SUPERMIMIC_ROBOT"] = args.robot
@@ -36,6 +45,7 @@ import numpy as np
 import torch
 
 import supermimic.networks as networks
+from supermimic.dr import DRCfg, describe, parse_terms
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP
@@ -50,6 +60,10 @@ kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion_dir, kin, dev)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
 C = len(motion.names)
+dr = DRCfg(parse_terms(args.dr))
+RANDOMIZE = args.dr not in ("", "none")
+R = args.repeats
+SUFFIX = "" if not RANDOMIZE else "_dr-" + args.dr.replace(",", "+")
 
 
 @torch.no_grad()
@@ -62,38 +76,42 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
     pi = Policy(OBS_DIM, 73 * K, hist=Hh).to(dev)
     pi.load_state_dict(ck["pi"])
     pi.eval()
-    ids = torch.arange(C, device=dev)
+    torch.manual_seed(args.seed)  # per-episode draws, pushes and observation noise repeat for every checkpoint
+    ids = torch.arange(C * R, device=dev)
     env.done_eval[:] = False
     env.failed_eval[:] = False
-    env.reset(ids, motion.clip_start.clone())
-    clip_end = motion.clip_end.clone()
-    ret = torch.zeros(C, device=dev)
-    steps = torch.zeros(C, device=dev)
+    env.reset(ids, motion.clip_start.repeat(R))
+    clip_end = motion.clip_end.repeat(R)
+    ret = torch.zeros(C * R, device=dev)
     hist = None
     traj = {"root_p": [], "root_quat": [], "q": [], "f": [], "alive": []}
     while not bool(env.done_eval.all()):
         S = env.state()
         o = mdp.obs(S, env.a_prev, env.xi, env.f)
+        if RANDOMIZE:
+            o = mdp.add_noise(o)
         hist = o.unsqueeze(1).repeat(1, Hh, 1) if hist is None else torch.cat((hist[:, 1:], o.unsqueeze(1)), 1)
         a = pi(hist, motion.goal(env.f, K))
         alive = ~env.done_eval.clone()
-        if record:
+        if record:  # the first rollout of every motion
             from supermimic.rotations import mat_to_quat
 
-            traj["root_p"].append(S[0].cpu()), traj["root_quat"].append(mat_to_quat(S[1]).cpu())
-            traj["q"].append(S[4].cpu()), traj["f"].append(env.f.cpu()), traj["alive"].append(alive.cpu())
+            traj["root_p"].append(S[0][:C].cpu()), traj["root_quat"].append(mat_to_quat(S[1][:C]).cpu())
+            traj["q"].append(S[4][:C].cpu()), traj["f"].append(env.f[:C].cpu()), traj["alive"].append(alive[:C].cpu())
         out = env.step(a)
         ret += torch.where(alive, out["r"], 0.0)
-        steps += alive.float()
         env.f = torch.minimum(env.f, clip_end - 1)  # finished clips keep stepping; keep f+1 in range
-    norm = ret / ((motion.clip_len - 1).float() * MAX_STEP_REWARD)
+    norm = (ret / ((motion.clip_len.repeat(R) - 1).float() * MAX_STEP_REWARD)).view(R, C)
+    n_fail = env.failed_eval.view(R, C).sum(0)
     res = {
         "norm_return": norm.mean().item(),
-        "norm_return_framew": (ret.sum() / ((motion.clip_len - 1).sum() * MAX_STEP_REWARD)).item(),
-        "n_failed": int(env.failed_eval.sum().item()),
-        "failed": [motion.names[i] for i in env.failed_eval.nonzero().flatten().tolist()],
-        "per_clip": {motion.names[i]: round(norm[i].item(), 4) for i in range(C)},
+        "norm_return_framew": (ret.sum() / (R * (motion.clip_len - 1).sum() * MAX_STEP_REWARD)).item(),
+        "n_failed": int(n_fail.sum().item()),
+        "failed": [motion.names[i] + (f" x{int(n_fail[i])}" if R > 1 else "") for i in n_fail.nonzero().flatten().tolist()],
+        "per_clip": {motion.names[i]: round(norm[:, i].mean().item(), 4) for i in range(C)},
     }
+    if RANDOMIZE:
+        res |= {"dr": args.dr, "repeats": R, "seed": args.seed}
     if record:
         np.savez_compressed(record, names=np.array(motion.names), **{k: torch.stack(v).numpy() for k, v in traj.items()},
                             ref_root_p=motion.root_p.cpu().numpy(), ref_root_R=motion.root_R.cpu().numpy(), ref_q=motion.q.cpu().numpy(),
@@ -103,13 +121,24 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
 
 sim_cfg = make_sim(dev, args)
 with launch_simulation(sim_cfg, args):
-    env = TrackingSim(sim_cfg, C, motion, mdp, eval_mode=True)
+    torch.manual_seed(args.seed)  # start-up draws
+    env = TrackingSim(sim_cfg, C * R, motion, mdp, eval_mode=True, dr=dr, randomize=RANDOMIZE)
+    if RANDOMIZE:
+        print(f"Randomized evaluation: friction, joint offsets, torso COM, observation noise"
+              + (f", {describe(dr.terms)}" if dr.terms else "") + f"; {R} rollout(s) per motion, seed {args.seed}", flush=True)  # fmt: skip
     if args.ckpt:
-        ck = torch.load(args.ckpt, map_location=dev)
-        res = evaluate(env, ck, args.record)
-        print(json.dumps({k: v for k, v in res.items() if k != "per_clip"}, indent=1))
+        results = []
+        for i, path in enumerate(args.ckpt):
+            record = args.record and (args.record if len(args.ckpt) == 1 else args.record.replace(".npz", f"_{i}.npz"))
+            res = evaluate(env, torch.load(path, map_location=dev), record)
+            print(f"== {path}\n" + json.dumps({k: v for k, v in res.items() if k != "per_clip"}, indent=1), flush=True)
+            results.append((path, res))
+        if len(results) > 1:
+            print("\nSame draws for all checkpoints:")
+            for path, res in results:
+                print(f"  norm return {res['norm_return']:.4f}, failed {res['n_failed']}/{C * R}  {path}")
         sys.exit(0)
-    out_csv = os.path.join(args.run_dir, "eval.csv")
+    out_csv = os.path.join(args.run_dir, f"eval{SUFFIX}.csv")
     done = set()
     if os.path.exists(out_csv):
         done = {int(l.split(",")[0]) for l in open(out_csv).read().strip().splitlines()[1:]}
@@ -126,8 +155,8 @@ with launch_simulation(sim_cfg, args):
             res = evaluate(env, ck)
             line = f"{it},{ck['wall_time'] / 3600:.4f},{ck['saved_at']},{time.strftime('%Y-%m-%d %H:%M:%S')},{res['norm_return']:.4f},{res['norm_return_framew']:.4f},{res['n_failed']},{'|'.join(res['failed'])}\n"
             open(out_csv, "a").write(line)
-            json.dump(res, open(c.replace(".pt", "_eval.json"), "w"), indent=1)
-            print(f"[eval] it {it} ({ck['wall_time'] / 3600:.2f} h): norm return {res['norm_return']:.4f}, failed {res['n_failed']}/{C} ({time.time() - t0:.0f}s)", flush=True)
+            json.dump(res, open(c.replace(".pt", f"_eval{SUFFIX}.json"), "w"), indent=1)
+            print(f"[eval{SUFFIX}] it {it} ({ck['wall_time'] / 3600:.2f} h): norm return {res['norm_return']:.4f}, failed {res['n_failed']}/{C * R} ({time.time() - t0:.0f}s)", flush=True)
             done.add(it)
         if not args.watch:
             break

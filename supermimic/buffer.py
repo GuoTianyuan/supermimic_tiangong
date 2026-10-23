@@ -16,20 +16,22 @@ FIELDS = {
     "f": ((), torch.long),
     "ep_step": ((), torch.int32),
     "done": ((), torch.bool),
+    "cut": ((), torch.bool),  # a push changed the state after s1, before the next transition
 }
 
 
 class ReplayBuffer:
-    def __init__(self, T: int, N: int, device: str):
+    def __init__(self, T: int, N: int, device: str, xi_dim: int = XI_DIM):
         self.T, self.N, self.device = T, N, device
+        self.fields = {**FIELDS, "xi": (xi_dim, torch.float32)}
         self.data = {}
-        for k, (shape, dt) in FIELDS.items():
+        for k, (shape, dt) in self.fields.items():
             shp = (T, N) + ((shape,) if isinstance(shape, int) else shape)
             self.data[k] = torch.zeros(shp, dtype=dt, device=device)
         self.ptr, self.size = 0, 0
 
     def add(self, tr: dict):
-        for k in FIELDS:
+        for k in self.fields:
             self.data[k][self.ptr] = tr[k]
         self.ptr = (self.ptr + 1) % self.T
         self.size = min(self.size + 1, self.T)
@@ -45,9 +47,9 @@ class ReplayBuffer:
         ages = t0.unsqueeze(-1) + torch.arange(k, device=self.device)
         rows = self._row(ages)
         e = env.unsqueeze(-1).expand_as(rows)
-        out = {key: self.data[key][rows, e] for key in ("s", "s1", "a", "xi", "done")}
-        # transition j is valid if no episode ended at transitions 0..j-1
-        d = out["done"].float()
+        out = {key: self.data[key][rows, e] for key in ("s", "s1", "a", "a_prev", "xi", "done", "cut")}
+        # transition j is valid if no episode ended and no push moved the state at transitions 0..j-1
+        d = (out["done"] | out["cut"]).float()
         mask = torch.cumprod(torch.cat((torch.ones(B, 1, device=self.device), 1 - d[:, :-1]), -1), -1)
         out["mask"] = mask
         return out

@@ -178,8 +178,10 @@ class MDP:
         return torch.cat((invariant_features(S), m.q[f] - q, e_body, e_root, rel, xi), -1)
 
 
-CRITIC_EXTRA = 29 + 14 * 3 + 3 + 6 + XI_DIM
+CRITIC_EXTRA = 29 + 14 * 3 + 3 + 6  # followed by xi
 
 
 def normalize_xi(xi: torch.Tensor) -> torch.Tensor:
-    return torch.cat(((xi[..., :1] - 0.75) / 0.45, xi[..., 1:30] / 0.01, xi[..., 30:33] / 0.05), -1)
+    """Base context to unit scale; entries past XI_DIM (supermimic/dr.py) are stored normalized."""
+    base = torch.cat(((xi[..., :1] - 0.75) / 0.45, xi[..., 1:30] / 0.01, xi[..., 30:33] / 0.05), -1)
+    return torch.cat((base, xi[..., XI_DIM:]), -1) if xi.shape[-1] > XI_DIM else base

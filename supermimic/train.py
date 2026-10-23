@@ -54,6 +54,8 @@ parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--amp", type=str, default="bf16", choices=["none", "bf16"], help="autocast dtype for MLP matmuls")
 parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
+parser.add_argument("--dr", type=str, default="", help="extra domain randomization for deployment (tiangong3): comma list of "
+                    "pd, push, mass, armature, joint_friction, delay, or all; see supermimic/dr.py")  # fmt: skip
 add_launcher_args(parser)
 args = parser.parse_args()
 os.environ["SUPERMIMIC_ROBOT"] = args.robot
@@ -79,6 +81,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 
 from supermimic.buffer import ReplayBuffer
+from supermimic.dr import DRCfg, describe, parse_terms
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import CRITIC_EXTRA, INV_DIM, MDP, OBS_DIM, invariant_features, normalize_xi, unflatten_state
@@ -87,6 +90,7 @@ import supermimic.networks as networks
 from supermimic.networks import Critic, Policy, WorldModel
 from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
+dr = DRCfg(parse_terms(args.dr))
 
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
@@ -109,9 +113,9 @@ print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frame
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
 K, Hh, HZ = args.goal_frames, args.hist, args.horizon
 GOAL_DIM = 73 * K
-CRITIC_IN = INV_DIM + CRITIC_EXTRA + GOAL_DIM
+CRITIC_IN = INV_DIM + CRITIC_EXTRA + dr.xi_dim + GOAL_DIM
 
-wm = WorldModel().to(dev)
+wm = WorldModel(xi_dim=dr.xi_dim, a_prev=bool(dr.terms)).to(dev)
 pi = Policy(OBS_DIM, GOAL_DIM, hist=Hh).to(dev)
 critic = Critic(CRITIC_IN).to(dev)
 opt_wm = torch.optim.Adam(wm.parameters(), lr=args.lr)
@@ -122,6 +126,11 @@ if args.resume:
     ck = torch.load(args.resume, map_location=dev)
     if ck["args"].get("robot", "g1") != args.robot:
         raise ValueError("Checkpoint robot does not match --robot")
+    ck_dr = ck["args"].get("dr", "")
+    if bool(parse_terms(ck_dr)) != bool(dr.terms):
+        # all term sets share one xi layout (supermimic/dr.py), which differs from the paper's 33 entries
+        raise ValueError(f"Checkpoint was trained {f'with --dr {ck_dr}' if ck_dr else 'without --dr'}; resume it "
+                         f"{'with some --dr terms' if ck_dr else 'without --dr'} (the xi layouts differ)")  # fmt: skip
     wm.load_state_dict(ck["wm"]), pi.load_state_dict(ck["pi"]), critic.load_state_dict(ck["critic"])
     opt_wm.load_state_dict(ck["opt_wm"]), opt_pi.load_state_dict(ck["opt_pi"]), opt_v.load_state_dict(ck["opt_v"])
     start_it, wall_offset, sim_steps = ck["iteration"], ck["wall_time"], ck["sim_steps"]
@@ -161,11 +170,11 @@ ERR_FLOOR = torch.cat((torch.full((3,), 3e-3), torch.full((3,), 5e-3), torch.ful
                        torch.full((29,), 3e-3), torch.full((29,), 5e-2))).to(dev)  # fmt: skip
 
 
-def _wm_rollout(s, a, xi):
+def _wm_rollout(s, a, a_prev, xi):
     S = unflatten_state(s[:, 0])
     preds = []
     for j in range(args.wm_window):
-        S = wm.step(S, a[:, j], normalize_xi(xi[:, j]))
+        S = wm.step(S, a[:, j], normalize_xi(xi[:, j]), a_prev[:, j])
         preds.append(S)
     return tuple(torch.stack([P[i] for P in preds], 1) for i in range(6))  # (B, k, ...)
 
@@ -179,7 +188,7 @@ def _wm_err(S_hat, s1, mask):
 
 def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
     a = pi(o_hist, g)
-    S1 = wm.step(S, a, xi_n)
+    S1 = wm.step(S, a, xi_n, a_prev)
     f1 = f + 1
     o1 = mdp.add_noise(mdp.obs(S1, a, xi, f1))
     o_hist = torch.cat((o_hist[:, 1:], o1.unsqueeze(1)), 1)
@@ -261,7 +270,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
 # ------------------------------------------------------------------------------------------------
 def wm_update():
     w = buffer.sample_windows(args.wm_batch, args.wm_window)
-    S_hat = wm_rollout(w["s"], w["a"], w["xi"])
+    S_hat = wm_rollout(w["s"], w["a"], w["a_prev"], w["xi"])
     loss, e_last = wm_err(S_hat, w["s1"], w["mask"])
     opt_wm.zero_grad(set_to_none=True)
     loss.backward()
@@ -377,8 +386,8 @@ def policy_update():
 # ------------------------------------------------------------------------------------------------
 sim_cfg = make_sim(dev, args)
 with launch_simulation(sim_cfg, args):
-    env = TrackingSim(sim_cfg, args.num_envs, motion, mdp, gamma=args.gamma)
-    buffer = ReplayBuffer(args.buffer_steps, args.num_envs, dev)
+    env = TrackingSim(sim_cfg, args.num_envs, motion, mdp, gamma=args.gamma, dr=dr)
+    buffer = ReplayBuffer(args.buffer_steps, args.num_envs, dev, xi_dim=dr.xi_dim)
     obs_hist = torch.zeros(args.num_envs, Hh, OBS_DIM, device=dev)
 
     @torch.no_grad()
@@ -397,7 +406,7 @@ with launch_simulation(sim_cfg, args):
             out = env.step(a)
             buffer.add(out)
             S0, S1 = unflatten_state(out["s"]), unflatten_state(out["s1"])
-            wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"])))
+            wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"]), out["a_prev"]))
             wm.out_norm.update(wm.targets(S0, S1))
             sim_steps += args.num_envs * WORLD
             stats["r"].append(out["r"].mean() / 0.1)
@@ -432,6 +441,7 @@ with launch_simulation(sim_cfg, args):
         print(f" Motion {args.motion_dir}: {num_clips} clips, {num_frames} frames" + (f" (split over {WORLD} GPUs)" if WORLD > 1 else ""))
         print(f" {envs} | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
               f" | checkpoint every {args.ckpt_every}")
+        print(" Domain randomization: friction, joint offsets, torso COM" + (f" + {describe(dr.terms)} (xi {dr.xi_dim})" if dr.terms else ""))
         print(f" Logs {args.log_dir}" + (f" | TensorBoard {tb_url}" if tb_url else ""))
         print(" Ctrl+C: stop after the current iteration and save a checkpoint")
         print("=" * 80, flush=True)

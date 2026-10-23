@@ -75,18 +75,25 @@ def run_mlp(net: nn.Module, x: torch.Tensor) -> torch.Tensor:
 
 
 class WorldModel(nn.Module):
-    """Deterministic dynamics s_{t+1} = f(s_t, a_t, xi) predicting frame-local state increments."""
+    """Deterministic dynamics s_{t+1} = f(s_t, a_t, xi) predicting frame-local state increments.
 
-    def __init__(self, hidden=(2048, 2048, 2048)):
+    With ``a_prev`` the previous action is an input as well: under actuator delay its target still
+    drives the first physics substeps of the control step.
+    """
+
+    def __init__(self, hidden=(2048, 2048, 2048), xi_dim: int = XI_DIM, a_prev: bool = False):
         super().__init__()
-        self.in_dim = INV_DIM + NUM_J + XI_DIM
+        self.a_prev = a_prev
+        self.in_dim = INV_DIM + NUM_J * (2 if a_prev else 1) + xi_dim
         self.net = mlp(self.in_dim, list(hidden), WM_OUT, act=nn.SiLU, layer_norm=True)
         nn.init.zeros_(self.net[-1].weight)
         nn.init.zeros_(self.net[-1].bias)
         self.in_norm = RunningNorm(self.in_dim)
         self.out_norm = RunningNorm(WM_OUT, eps=1e-4)
 
-    def inputs(self, S, a, xi_n):
+    def inputs(self, S, a, xi_n, a_prev=None):
+        if self.a_prev:
+            return torch.cat((invariant_features(S), a, a_prev, xi_n), -1)
         return torch.cat((invariant_features(S), a, xi_n), -1)
 
     @staticmethod
@@ -110,9 +117,9 @@ class WorldModel(nn.Module):
             -1,
         )
 
-    def step(self, S, a, xi_n):
+    def step(self, S, a, xi_n, a_prev=None):
         p, R, v, w, q, qd = S
-        y = run_mlp(self.net, self.in_norm(self.inputs(S, a, xi_n)))
+        y = run_mlp(self.net, self.in_norm(self.inputs(S, a, xi_n, a_prev)))
         d = y * self.out_norm.std() + self.out_norm.mean
         H = yaw_mat(R)
         dp, dth, dv, dw, dq, dqd = d.split((3, 3, 3, 3, NUM_J, NUM_J), -1)

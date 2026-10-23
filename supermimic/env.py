@@ -20,6 +20,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
 from isaaclab.utils import configclass, instantiate, replace
 
+from .dr import ARMATURE, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, parse_terms, to_unit, uniform
 from .mdp import MAX_STEP_REWARD, MDP, flatten_state
 from .motion import CONTROL_DT, MotionLib
 from .robot import G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
@@ -33,21 +34,26 @@ class TrackingSceneCfg(InteractiveSceneCfg):
 
 
 def make_sim(device: str, args) -> SimulationContext:
+    # With actuator delay (args.dr, supermimic/dr.py) TrackingSim runs the four 5 ms physics substeps
+    # itself, so it can switch joint targets between them.
+    k = 4 if "delay" in parse_terms(getattr(args, "dr", None)) else 1
     physics = NewtonCfg(
         solver_cfg=MJWarpSolverCfg(njmax=500, nconmax=128, cone="pyramidal", integrator="implicitfast", use_mujoco_contacts=True),
-        num_substeps=4,
+        num_substeps=4 // k,
     )
-    return sim_utils.SimulationCfg(dt=CONTROL_DT, device=device, physics=physics)
+    return sim_utils.SimulationCfg(dt=CONTROL_DT / k, device=device, physics=physics)
 
 
 class TrackingSim:
     """Batched G1 motion-tracking simulator.
 
     Must be constructed inside ``launch_simulation(sim_cfg, ...)`` with ``sim_cfg`` from :func:`make_sim`.
+    ``randomize`` (default: not ``eval_mode``) draws the paper's context randomization and the ``dr``
+    terms; otherwise every parameter stays nominal, with friction 1.
     """
 
     def __init__(self, sim_cfg, num_envs: int, motion: MotionLib, mdp: MDP, gamma: float = 0.99, eval_mode: bool = False,
-                 max_episode_steps: int = 500, reset_noise: bool = True):
+                 max_episode_steps: int = 500, reset_noise: bool = True, dr: DRCfg | None = None, randomize: bool | None = None):
         self.device = sim_cfg.device
         self.sim = SimulationContext(sim_cfg)
         self.scene = instantiate(TrackingSceneCfg(num_envs=num_envs, env_spacing=0.0, replicate_physics=True))
@@ -57,6 +63,12 @@ class TrackingSim:
         self.N = num_envs
         self.motion, self.mdp, self.gamma = motion, mdp, gamma
         self.eval_mode = eval_mode
+        self.randomize = not eval_mode if randomize is None else randomize
+        self.dr = dr or DRCfg()
+        self.dr_on = self.dr.terms if self.randomize else frozenset()
+        self.substeps = round(CONTROL_DT / sim_cfg.dt)
+        if "delay" in self.dr.terms and self.substeps < self.dr.max_delay:
+            raise ValueError("actuator delay needs the 5 ms physics steps of make_sim(device, args) with args.dr")
         self.max_episode_steps = max_episode_steps if not eval_mode else 10**9
         self.reset_noise = reset_noise and not eval_mode
         dev = self.device
@@ -64,10 +76,10 @@ class TrackingSim:
         self.alpha = torch.tensor([action_scale(n) for n in G1_JOINT_NAMES], device=dev)
         self.torso_id = self.robot.find_bodies(TORSO_BODY)[0][0]
 
-        # ---- sim context xi = [friction, joint offsets(29), torso com offset(3)] ----
-        self.xi = torch.zeros(self.N, 33, device=dev)
+        # ---- sim context xi = [friction, joint offsets(29), torso com offset(3)] (+ supermimic/dr.py layout) ----
+        self.xi = torch.zeros(self.N, self.dr.xi_dim, device=dev)
         self._setup_friction()
-        if eval_mode:
+        if not self.randomize:
             self.xi[:, 0] = 1.0
         else:
             self.xi[:, 0] = torch.empty(self.N, device=dev).uniform_(0.3, 1.2)
@@ -83,11 +95,16 @@ class TrackingSim:
             default_com = self.robot.data.body_com_pose_b.torch[:, self.torso_id, :3].clone()
             self.robot.set_coms_index(coms=(default_com + com).unsqueeze(1), body_ids=[self.torso_id])
         self._apply_friction()
+        if self.dr.terms:
+            self._setup_dr()
 
         # ---- episode bookkeeping ----
         self.f = torch.zeros(self.N, dtype=torch.long, device=dev)
         self.ep_step = torch.zeros(self.N, dtype=torch.long, device=dev)
         self.a_prev = torch.zeros(self.N, 29, device=dev)
+        self.target_prev = torch.zeros(self.N, 29, device=dev)
+        self.delay = torch.zeros(self.N, dtype=torch.long, device=dev)
+        self.push_timer = torch.zeros(self.N, dtype=torch.long, device=dev)
         self.start_bin = torch.zeros(self.N, dtype=torch.long, device=dev)
         self.ep_disc_ret = torch.zeros(self.N, device=dev)
         self.ep_ret = torch.zeros(self.N, device=dev)
@@ -106,11 +123,72 @@ class TrackingSim:
         # ground shapes (body == -1): lowest friction of the range, since MuJoCo takes the max of a pair
         shape_body = wp.to_torch(model.shape_body)
         mu_all = wp.to_torch(model.shape_material_mu)
-        mu_all[shape_body < 0] = 0.3 if not self.eval_mode else 1.0
+        mu_all[shape_body < 0] = 0.3 if self.randomize else 1.0
 
     def _apply_friction(self):
         self._mu_view[:] = self.xi[:, :1]
         self.sim.backend_manager.add_model_change(ModelFlags.SHAPE_PROPERTIES)
+
+    # ------------------------------------------------------------------ supermimic/dr.py terms
+    def _setup_dr(self):
+        """Start-up terms; every extended xi entry starts at its nominal value."""
+        c, r, d, dev, N = self.dr, self.robot, self.robot.data, self.device, self.N
+        self.kp0, self.kd0 = d.joint_stiffness.torch.clone(), d.joint_damping.torch.clone()
+        arm_lo, arm_hi = (torch.tensor([(c.ankle_armature if "ankle" in n else c.armature)[i] for n in G1_JOINT_NAMES], device=dev)
+                          for i in (0, 1))  # fmt: skip
+        if "armature" in self.dr_on:
+            r.write_joint_armature_to_sim_index(armature=uniform(arm_lo, arm_hi, (N, 29), dev))
+        if "joint_friction" in self.dr_on:
+            r.write_joint_friction_coefficient_to_sim_index(joint_friction_coeff=uniform(*c.joint_friction, (N, 29), dev))
+        mass = torch.ones(N, len(MASS_SEGMENTS), device=dev)
+        if "mass" in self.dr_on:
+            mass = uniform(*c.mass_scale, mass.shape, dev)
+            s = mass[:, [mass_segment(b) for b in r.body_names]]
+            r.set_masses_index(masses=d.body_mass.torch * s)
+            r.set_inertias_index(inertias=d.body_inertia.torch * s.unsqueeze(-1))
+        self.xi[:, KP] = to_unit(1.0, *c.kp_scale)
+        self.xi[:, KD] = to_unit(1.0, *c.kd_scale)
+        self.xi[:, ARMATURE] = to_unit(d.joint_armature.torch, arm_lo, arm_hi)
+        self.xi[:, JOINT_FRICTION] = to_unit(d.joint_friction_coeff.torch, *c.joint_friction)
+        self.xi[:, MASS] = to_unit(mass, *c.mass_scale)
+        self.xi[:, DELAY] = to_unit(0.0, 0, c.max_delay)
+
+    def _reset_dr(self, env_ids: torch.Tensor):
+        """Per-episode terms."""
+        c, n, dev = self.dr, len(env_ids), self.device
+        if "pd" in self.dr_on:
+            kp, kd = uniform(*c.kp_scale, (n, 29), dev), uniform(*c.kd_scale, (n, 29), dev)
+            mgr = self.sim.backend_manager
+            pending = ModelFlags.JOINT_DOF_PROPERTIES in mgr._model_changes
+            self.robot.write_joint_stiffness_to_sim_index(stiffness=self.kp0[env_ids] * kp, env_ids=env_ids)
+            self.robot.write_joint_damping_to_sim_index(damping=self.kd0[env_ids] * kd, env_ids=env_ids)
+            if not pending:
+                # The joint writers request JOINT_DOF_PROPERTIES, which makes MuJoCo-Warp recompute all model
+                # constants at the next step (~10 ms at 1k envs); gains only need the actuator parameters.
+                mgr._model_changes.discard(ModelFlags.JOINT_DOF_PROPERTIES)
+                mgr.add_model_change(ModelFlags.JOINT_DOF_FORCE_PROPERTIES)
+            self.xi[env_ids, KP] = to_unit(kp, *c.kp_scale)
+            self.xi[env_ids, KD] = to_unit(kd, *c.kd_scale)
+        if "delay" in self.dr_on:
+            self.delay[env_ids] = torch.randint(0, c.max_delay + 1, (n,), device=dev)
+            self.xi[env_ids, DELAY] = to_unit(self.delay[env_ids].float(), 0, c.max_delay)
+        if "push" in self.dr_on:
+            self.push_timer[env_ids] = self._push_interval(n)
+
+    def _push_interval(self, n: int) -> torch.Tensor:
+        return (uniform(*self.dr.push_interval_s, (n,), self.device) / CONTROL_DT).round().long()
+
+    def _push(self, S1) -> torch.Tensor:
+        """Add a random root velocity every 1-5 s per environment (DexEVT's push_by_setting_velocity)."""
+        self.push_timer -= 1
+        push = self.push_timer <= 0
+        ids = push.nonzero(as_tuple=False).squeeze(-1)
+        if len(ids) > 0:
+            half = torch.tensor(self.dr.push_lin_vel + self.dr.push_ang_vel, device=self.device)
+            vel = torch.cat((S1[2][ids], S1[3][ids]), -1) + (2 * torch.rand(len(ids), 6, device=self.device) - 1) * half
+            self.robot.write_root_link_velocity_to_sim_index(root_velocity=vel, env_ids=ids)
+            self.push_timer[ids] = self._push_interval(len(ids))
+        return push
 
     # ------------------------------------------------------------------ state
     def state(self):
@@ -168,14 +246,17 @@ class TrackingSim:
         self.robot.write_joint_position_to_sim_index(position=q, env_ids=env_ids)
         self.robot.write_joint_velocity_to_sim_index(velocity=qd, env_ids=env_ids)
         self.robot.set_joint_position_target_index(target=q, env_ids=env_ids)
+        self.target_prev[env_ids] = q  # a delayed first step holds the reset pose
         self.f[env_ids] = frames
         self.ep_step[env_ids] = 0
         self.a_prev[env_ids] = 0.0
         self.start_bin[env_ids] = bins
         self.ep_disc_ret[env_ids] = 0.0
         self.ep_ret[env_ids] = 0.0
-        if not self.eval_mode:
+        if self.randomize:
             self.xi[env_ids, 1:30] = torch.empty(n, 29, device=dev).uniform_(-0.01, 0.01)
+        if self.dr.terms:
+            self._reset_dr(env_ids)
         self.scene.reset(env_ids)
 
     def refresh(self):
@@ -191,9 +272,13 @@ class TrackingSim:
         a_prev = self.a_prev.clone()
         ep_step = self.ep_step.clone()
         target = self.default_q + xi[:, 1:30] + self.alpha * a
-        self.robot.set_joint_position_target_index(target=target)
-        self.scene.write_data_to_sim()
-        self.sim.step(render=False)
+        for k in range(self.substeps):
+            # under actuator delay the first `delay` substeps still track the previous target
+            tgt = target if self.substeps == 1 else torch.where((k < self.delay).unsqueeze(-1), self.target_prev, target)
+            self.robot.set_joint_position_target_index(target=tgt)
+            self.scene.write_data_to_sim()
+            self.sim.step(render=False)
+        self.target_prev = target
         self.scene.update(CONTROL_DT)
         S1 = self.state()
         f1 = f + 1
@@ -202,9 +287,10 @@ class TrackingSim:
         clip_end = self.motion.clip_end[self.motion.clip_id[f]]
         timeout = (f1 >= clip_end) | (ep_step + 1 >= self.max_episode_steps)
         done = term | timeout
+        cut = self._push(S1) if "push" in self.dr_on else torch.zeros_like(done)
         out = {
             "s": flatten_state(S), "a": a.clone(), "a_prev": a_prev, "f": f, "s1": flatten_state(S1), "r": r,
-            "term": term, "done": done, "ep_step": ep_step, "xi": xi, "terms": terms,
+            "term": term, "done": done, "cut": cut, "ep_step": ep_step, "xi": xi, "terms": terms,
         }  # fmt: skip
         # bookkeeping
         self.ep_disc_ret += (self.gamma ** ep_step.float()) * r
