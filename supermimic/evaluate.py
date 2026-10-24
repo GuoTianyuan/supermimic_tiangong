@@ -49,7 +49,7 @@ from supermimic.dr import DRCfg, describe, parse_terms
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP
-from supermimic.motion import MotionLib
+from supermimic.motion import MotionLib, motion_group
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
@@ -64,6 +64,19 @@ dr = DRCfg(parse_terms(args.dr))
 RANDOMIZE = args.dr not in ("", "none")
 R = args.repeats
 SUFFIX = "" if not RANDOMIZE else "_dr-" + args.dr.replace(",", "+")
+GROUPS: dict[str, list[int]] = {}
+for _i, _name in enumerate(motion.names):
+    GROUPS.setdefault(motion_group(_name), []).append(_i)
+
+
+def group_table(res: dict, top: int = 25) -> str:
+    """Motion groups by failure rate, worst first."""
+    rows = sorted(res["per_group"].items(), key=lambda kv: (-kv[1]["failed"] / kv[1]["rollouts"], kv[1]["norm_return"]))
+    lines = [f"  {'group':<40} {'failed':>12} {'norm return':>12}"]
+    lines += [f"  {g[:40]:<40} {v['failed']:>5}/{v['rollouts']:<6} {v['norm_return']:>12.4f}" for g, v in rows[:top]]
+    if len(rows) > top:
+        lines.append(f"  ... {len(rows) - top} more groups in the json")
+    return "\n".join(lines)
 
 
 @torch.no_grad()
@@ -73,13 +86,14 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         raise ValueError("Checkpoint robot does not match --robot")
     K, Hh = a_["goal_frames"], a_["hist"]
     networks.AMP_DTYPE = torch.bfloat16 if a_.get("amp", "none") == "bf16" else None
-    pi = Policy(OBS_DIM, 73 * K, hist=Hh).to(dev)
+    pi = Policy(OBS_DIM, 73 * K, hist=Hh, soft_clip_actions=a_.get("act_soft_clip", False)).to(dev)
     pi.load_state_dict(ck["pi"])
     pi.eval()
     torch.manual_seed(args.seed)  # per-episode draws, pushes and observation noise repeat for every checkpoint
     ids = torch.arange(C * R, device=dev)
     env.done_eval[:] = False
     env.failed_eval[:] = False
+    env.reset_a_prev = a_.get("reset_a_prev", "zero")  # as in training
     env.reset(ids, motion.clip_start.repeat(R))
     clip_end = motion.clip_end.repeat(R)
     ret = torch.zeros(C * R, device=dev)
@@ -109,6 +123,8 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         "n_failed": int(n_fail.sum().item()),
         "failed": [motion.names[i] + (f" x{int(n_fail[i])}" if R > 1 else "") for i in n_fail.nonzero().flatten().tolist()],
         "per_clip": {motion.names[i]: round(norm[:, i].mean().item(), 4) for i in range(C)},
+        "per_group": {g: {"rollouts": R * len(ix), "failed": int(n_fail[ix].sum().item()), "norm_return": round(norm[:, ix].mean().item(), 4)}
+                      for g, ix in GROUPS.items()},  # fmt: skip
     }
     if RANDOMIZE:
         res |= {"dr": args.dr, "repeats": R, "seed": args.seed}
@@ -131,7 +147,8 @@ with launch_simulation(sim_cfg, args):
         for i, path in enumerate(args.ckpt):
             record = args.record and (args.record if len(args.ckpt) == 1 else args.record.replace(".npz", f"_{i}.npz"))
             res = evaluate(env, torch.load(path, map_location=dev), record)
-            print(f"== {path}\n" + json.dumps({k: v for k, v in res.items() if k != "per_clip"}, indent=1), flush=True)
+            summary = {k: v for k, v in res.items() if k not in ("per_clip", "per_group")}
+            print(f"== {path}\n" + json.dumps(summary, indent=1) + "\n" + group_table(res), flush=True)
             results.append((path, res))
         if len(results) > 1:
             print("\nSame draws for all checkpoints:")
@@ -157,6 +174,7 @@ with launch_simulation(sim_cfg, args):
             open(out_csv, "a").write(line)
             json.dump(res, open(c.replace(".pt", f"_eval{SUFFIX}.json"), "w"), indent=1)
             print(f"[eval{SUFFIX}] it {it} ({ck['wall_time'] / 3600:.2f} h): norm return {res['norm_return']:.4f}, failed {res['n_failed']}/{C * R} ({time.time() - t0:.0f}s)", flush=True)
+            print(group_table(res, top=10), flush=True)
             done.add(it)
         if not args.watch:
             break

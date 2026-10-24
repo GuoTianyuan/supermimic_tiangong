@@ -48,6 +48,18 @@ cd /media/roy/supermimic_vibed
   | 16384 | 50 GB | 1.9 it/s | 63 万 |
 
   32 万次迭代约 47 小时。启动时每卡加载动作约 4.5 分钟，之后编译约 1 分钟。
+- 推荐每卡 `--num_envs 8192 --buffer_steps 1000`：速度和 16384 环境几乎一样，buffer 显存和 16384 × 500 相同，
+  但保留的历史长一倍，策略一时退化时 buffer 不会很快被摔倒数据占满。
+- 进度块和 TensorBoard 的 `4_critic/horizon_value_*` 记录想象终点的 critic 估值 V(s_H)：均值、最大值，以及超过
+  最大可能回报 10（0.1/(1−γ)）的比例。比例持续上升说明策略在利用 critic 的高估，通常先于训练崩溃出现；
+  `policy_grad_norm_max` 是每个日志窗口内的梯度范数最大值。
+- `3_policy_imagination/action_loop_gain_*`（进度块 “Action loop gain”）是策略对观测里上一动作的雅可比
+  ‖∂a_t/∂a_{t−1}‖₂（最大奇异值，256 个 buffer 状态的中位数和最大值）。长期大于 1 表示想象中的动作回路会自我放大，
+  BPTT 梯度随步数增长；这时可以 `--resume` 并加 `--detach_a_prev`（想象中不对这条观测回传梯度）。
+- `1_tracking/dr_range_scale_mean` 是 `--dr` 各项当前范围比例的平均值（课程渐变的进度）。
+- `1_tracking/diverged_sim_states`（CSV `sim_nonfinite`，非 0 时进度块里有 “Diverged sim states” 一行）是窗口内
+  物理状态发散（NaN/inf 或超过 1e3）的次数，这些环境直接结束回合并 reset，不会再让训练崩溃。偶尔个位数正常；
+  如果持续增多，多半是某个随机化范围让 MuJoCo-Warp 不稳定。
 - rank 0 的输出在终端和 `logs/<run>/stdout.log`，其余在 `logs/<run>/rank<N>.log`；checkpoint 只由 rank 0 写。
 - `stop`、`Ctrl+C`、`--resume` 与单卡相同，所有卡在同一迭代停下。任一进程异常退出时，其余进程会被一起结束。
 - 评估仍是单卡，`--motion_dir` 用小目录（如 `data/wbc_two`）；全量 9206 万帧放不进一张卡。
@@ -86,11 +98,21 @@ ssh -p 2210 -N -L 16006:127.0.0.1:16006 root@10.108.3.194   # 然后打开 http:
 ```
 
 全量训练用 `data/wbc_eval`（从 `data/wbc_partial` 固定种子抽的 256 条，1.2 h）评估；`--watch` 会持续评估新的
-checkpoint，结果写入 `logs/<run>/eval.csv`（`--every` 按每 2000 次迭代一个 checkpoint 计数）：
+checkpoint，结果写入 `logs/<run>/eval.csv`（`--every` 按每 2000 次迭代一个 checkpoint 计数）。
+评估会按动作大类（文件名里 `__` 前的部分，没有 `__` 时去掉末尾编号）汇总失败数和回报，打印失败率最高的几类，
+完整结果在 `ckpt_*_eval.json` 的 `per_group` 里。`wbc_full` 的文件名带大类（walk、run、crawl、lie_down 等 14 类），
+可以按类分层抽一个评估集：
 
 ```bash
-./sm_native.sh run --gpu 7 --robot tiangong3 python supermimic/evaluate.py --run_dir logs/wbc_full_v1 \
-  --motion_dir data/wbc_eval --watch --every 5
+./sm_native.sh run python tools/make_eval_subset.py --src data/wbc_full --out data/wbc_full_eval --per_group 32
+./sm_native.sh run --gpu 7 --robot tiangong3 python supermimic/evaluate.py --run_dir logs/wbc_full_dr_v2 \
+  --motion_dir data/wbc_full_eval --watch --every 5
+```
+
+评估会占一张卡，和 8 卡训练同时跑时用训练没占的卡，或者训练用 `--gpu 0,1,2,3,4,5,6`。
+如果某些大类（例如 crawl、kneel_down、lie_down、get_up、fuwocheng 等贴地动作）一直失败、又不需要，
+训练时可以用 `--motion_exclude '^(crawl|lie_down|get_up|fuwocheng)__'` 不加载它们；
+`--reset_temp`（默认 25）调低时，reset 采样不那么集中在回报最低的片段上。
 ## 带域随机化训练（第 3–7 步）
 
 各项含义、实现和验收方法见 `DEPLOY_TIANGONG3.md` 的“真机部署前的域随机化”。服务器上在训练命令末尾加 `--dr`：
@@ -101,6 +123,13 @@ checkpoint，结果写入 `logs/<run>/eval.csv`（`--every` 按每 2000 次迭�
 ```
 
 - 多卡训练同样加 `--dr`。replay buffer 每 1024 个环境多占约 0.6 GB，每卡 16384 环境时多约 9.6 GB。
+  全量数据建议用 `--dr_curriculum` 分阶段打开（先学会跟踪，再加本体参数，最后加推力和延迟）；每个阶段在
+  `--dr_ramp`（默认 2000）次迭代内从标称值逐步放宽到完整范围，每 5 % 更新一次并打印当前比例：
+
+```bash
+./sm_native.sh train wbc_full_dr_v2 --gpu all --robot tiangong3 --motion_dir data/wbc_full \
+  --dr all --dr_curriculum 3000,6000 --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000
+```
 - 不带 `--dr` 的训练与之前完全一样，`wbc_full_v1` 可以照常 `--resume`。
 - 基线和 DR 策略在同一组随机参数下评估：
 

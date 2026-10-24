@@ -16,8 +16,18 @@ from .rotations import mat_to_6d, quat_to_mat, mat_to_quat, rot_angle_sq, yaw_ma
 
 STATE_DIM = 71
 OBS_DIM = 29 + 29 + 3 + 3 + 29 + 6
+OBS_A_PREV = 29 + 29 + 3 + 3  # where a_prev starts in obs()
 XI_DIM = 33
 NUM_J = 29
+ACTION_CLIP = 20.0
+ACTION_SOFT = 15.0
+
+
+def soft_clip(a: torch.Tensor) -> torch.Tensor:
+    """Identity for |a| <= ACTION_SOFT, beyond it a C1 tanh saturation towards ACTION_CLIP."""
+    k, w = ACTION_SOFT, ACTION_CLIP - ACTION_SOFT
+    m = a.abs()
+    return torch.where(m <= k, a, a.sign() * (k + w * torch.tanh((m - k) / w)))
 
 # Table A.1 sensor noise (uniform half-widths), plus the reference-relative orientation
 OBS_NOISE = torch.cat(

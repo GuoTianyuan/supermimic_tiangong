@@ -6,7 +6,7 @@ import torch
 import torch.distributed as dist
 import torch.nn as nn
 
-from .mdp import INV_DIM, NUM_J, XI_DIM, invariant_features
+from .mdp import INV_DIM, NUM_J, XI_DIM, invariant_features, soft_clip
 from .rotations import so3_exp, yaw_mat
 
 
@@ -26,7 +26,7 @@ class RunningNorm(nn.Module):
     """Running mean/std normalizer; updated from data without gradients, frozen after ``max_count``.
 
     Under torch.distributed every rank must call ``update`` together; the batch statistics are merged
-    across ranks so all ranks keep identical normalizers.
+    across ranks so all ranks keep identical normalizers. Dims pinned with ``fix`` keep their values.
     """
 
     def __init__(self, dim: int, max_count: float = 2e8, eps: float = 1e-2):
@@ -34,24 +34,38 @@ class RunningNorm(nn.Module):
         self.register_buffer("mean", torch.zeros(dim))
         self.register_buffer("var", torch.ones(dim))
         self.register_buffer("count", torch.zeros(()))
+        self.register_buffer("fixed", torch.zeros(dim, dtype=torch.bool), persistent=False)
         self.max_count, self.eps = max_count, eps
+
+    @torch.no_grad()
+    def fix(self, idx, mean: torch.Tensor, std: torch.Tensor):
+        """Pin dims ``idx`` to ``mean`` / ``std``; ``update`` leaves them unchanged."""
+        self.mean[idx] = mean
+        self.var[idx] = std**2
+        self.fixed[idx] = True
 
     @torch.no_grad()
     def update(self, x: torch.Tensor):
         x = x.reshape(-1, x.shape[-1]).float()
         if self.count >= self.max_count:
             return
-        n = x.shape[0]
-        m, v = x.mean(0), x.var(0, unbiased=False)
+        # rows with a non-finite entry are left out, since one would spread to every rank's statistics
+        ok = torch.isfinite(x).all(-1, keepdim=True)
+        x = torch.where(ok, x, 0.0)
+        n = ok.sum().float()
+        m = x.sum(0) / n.clamp(min=1)
+        v = (((x - m) ** 2) * ok).sum(0) / n.clamp(min=1)
         if dist.is_initialized() and dist.get_world_size() > 1:
-            s = torch.cat((x.new_tensor([n]), m * n, (v + m * m) * n)).double()
+            s = torch.cat((n.view(1), m * n, (v + m * m) * n)).double()
             dist.all_reduce(s)
-            mg = s[1 : 1 + m.numel()] / s[0]
-            n, m, v = s[0].item(), mg.float(), (s[1 + m.numel() :] / s[0] - mg * mg).clamp(min=0).float()
-        tot = self.count + n
+            mg = s[1 : 1 + m.numel()] / s[0].clamp(min=1)
+            n, m, v = s[0].float(), mg.float(), (s[1 + m.numel() :] / s[0].clamp(min=1) - mg * mg).clamp(min=0).float()
+        tot = (self.count + n).clamp(min=1)
         delta = m - self.mean
-        self.mean += delta * n / tot
-        self.var = (self.var * self.count + v * n + delta**2 * self.count * n / tot) / tot
+        mean = self.mean + delta * n / tot
+        var = (self.var * self.count + v * n + delta**2 * self.count * n / tot) / tot
+        self.mean.copy_(torch.where(self.fixed, self.mean, mean))
+        self.var.copy_(torch.where(self.fixed, self.var, var))
         self.count = tot
 
     def forward(self, x):
@@ -152,11 +166,13 @@ class WorldModel(nn.Module):
 
 
 class Policy(nn.Module):
-    """a = dec(enc(g), o_{t-9:t}); deterministic, latent z in R^32 bounded by tanh."""
+    """a = dec(enc(g), o_{t-9:t}); deterministic, latent z in R^32 bounded by tanh. With ``soft_clip_actions``
+    the output passes :func:`supermimic.mdp.soft_clip`, so the simulator's hard clip never acts and
+    imagination sees the same bounded action."""
 
-    def __init__(self, obs_dim: int, goal_dim: int, hist: int = 10, z_dim: int = 32):
+    def __init__(self, obs_dim: int, goal_dim: int, hist: int = 10, z_dim: int = 32, soft_clip_actions: bool = False):
         super().__init__()
-        self.hist = hist
+        self.hist, self.soft_clip_actions = hist, soft_clip_actions
         self.enc = mlp(goal_dim, [2048, 1024, 512, 256], z_dim)
         self.dec = mlp(z_dim + obs_dim * hist, [2048, 1024, 512, 256], NUM_J)
         with torch.no_grad():
@@ -169,14 +185,16 @@ class Policy(nn.Module):
         """obs_hist: (B, hist, obs_dim) noisy observations, newest last."""
         z = torch.tanh(run_mlp(self.enc, self.goal_norm(goal)))
         o = self.obs_norm(obs_hist).flatten(-2)
-        return run_mlp(self.dec, torch.cat((z, o), -1))
+        a = run_mlp(self.dec, torch.cat((z, o), -1))
+        return soft_clip(a) if self.soft_clip_actions else a
 
 
 class Critic(nn.Module):
-    def __init__(self, in_dim: int):
+    def __init__(self, in_dim: int, layer_norm: bool = False):
         super().__init__()
-        self.net = mlp(in_dim, [256, 128], 1)
+        self.net = mlp(in_dim, [256, 128], 1, layer_norm=layer_norm)
         self.norm = RunningNorm(in_dim)
 
     def forward(self, x):
-        return run_mlp(self.net, self.norm(x)).squeeze(-1)
+        # fp32 even under --amp bf16: bf16 resolves values near G_MAX = 10 only to 1/16, about a step reward
+        return self.net(self.norm(x)).squeeze(-1)

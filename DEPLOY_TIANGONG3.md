@@ -96,6 +96,12 @@ xi 仍是 33 维，旧 checkpoint 照常恢复。只有 `--robot tiangong3` 能�
 | `delay` | 每控制步的前 k 个 5 ms 物理子步仍跟踪上一步的目标 | 每回合 reset | k = 0–4（0–20 ms） |
 
 用法：`--dr pd`、`--dr pd,push`、`--dr all`。评估默认仍是标称参数。
+`--dr_curriculum A,B` 分阶段打开：第 A 次迭代前只有论文原有的随机化，从 A 起除 push、delay 外的各项开始放宽，
+从 B 起 push、delay 开始放宽。每个阶段在 `--dr_ramp`（默认 2000）次迭代内把范围从标称值线性放宽到完整范围，
+每 5 % 一档：每项取值为 标称 + s·(抽样 − 标称)，s 为当前比例。启动时项每个环境只抽一次完整范围的样本，
+随 s 从标称值移向它，每档在切换时立即重写；pd、delay 从各环境的下一回合生效，推力幅度立即按比例缩放。
+扩展 xi 在世界模型和 critic 的输入归一化里固定为均值 0、标准差 1/√3（[−1, 1] 上均匀分布的值），
+不用滑动统计：课程开始前这些维是常数，滑动统计会冻结在常数附近，切换后输入会被放大上百倍。
 
 实现要点：
 
@@ -150,6 +156,16 @@ SMOKE=(--no_tb --num_envs 256 --buffer_steps 128 --wm_batch 256 --pi_batch 256 -
 
 DexEVT（PhysX）里的 sim2sim 还没做：需要在 DexEVT 环境里按 SuperMimic 的观测重新拼接输入。
 它的 50 Hz 配置和这里的动作约定（默认站姿、0.5·τ/Kp 缩放）一致，可以作为下一步。
+动作缩放已确认用 0.5·τ/Kp（髋约 0.13、腰 yaw 0.068、膝 0.196 rad/单位），部署端按同一缩放把动作换成关节目标；
+本机 `/media/roy/cheerleading_competition` 的 `robots/dex_evt.py` 里固定的 `D3_ACTION_SCALE[n] = 0.25` 不适用于这里的策略。
+
+策略输出：新训练的 checkpoint（`args.act_soft_clip`）在 `Policy.forward` 里做软限幅，|a| ≤ 15 时不变，
+之后平滑饱和到 20，部署时直接用网络输出（导出时包含 `forward` 即可），关节目标为 `q0 + α·a`
+（仿真里的零偏模拟的是标定误差，真机上没有这一项）。
+
+观测里的上一动作 `a_prev`：新训练的 checkpoint（`args.reset_a_prev == "pose"`）在每回合开始时取保持当前关节目标的动作
+`(q_target − q0 − 零偏)/α`，部署时策略启动的第一步也应这样初始化（从默认站姿启动时就是 0）；
+更早的 checkpoint 训练时取 0。`evaluate.py` 和 `tools/sim2sim_mujoco.py` 会按 checkpoint 自动选择。
 
 ### 冒烟测试结果（本机 RTX 5090，balance 动作，256 环境）
 

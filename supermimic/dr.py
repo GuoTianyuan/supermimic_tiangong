@@ -11,6 +11,7 @@ nominal value. The extended entries are stored normalized to [-1, 1] over their 
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import torch
@@ -50,6 +51,42 @@ def parse_terms(spec: str | None) -> frozenset[str]:
 
 def describe(terms: frozenset[str]) -> str:
     return ", ".join(t for t in TERMS if t in terms)
+
+
+def describe_scale(scale: dict[str, float]) -> str:
+    return ", ".join(f"{t} {100 * scale[t]:.0f}%" for t in TERMS if scale.get(t, 0.0) > 0) or "base only"
+
+
+LATE_TERMS = frozenset({"push", "delay"})
+
+
+def parse_curriculum(spec: str | None) -> tuple[int, int] | None:
+    """``"A,B"``: base randomization only before iteration A, the terms other than push/delay widen from A,
+    push/delay from B (see :func:`curriculum_scale`)."""
+    if not spec:
+        return None
+    try:
+        a, b = (int(x) for x in spec.split(","))
+    except ValueError:
+        raise ValueError(f"--dr_curriculum takes two iterations A,B, got {spec!r}") from None
+    if not 0 <= a <= b:
+        raise ValueError(f"--dr_curriculum needs 0 <= A <= B, got {spec!r}")
+    return a, b
+
+
+def curriculum_scale(terms: frozenset[str], curriculum: tuple[int, int] | None, ramp: int, it: int) -> dict[str, float]:
+    """Fraction of each term's range in use at iteration ``it`` (0: nominal, 1: full). Each curriculum stage
+    widens linearly over ``ramp`` iterations (0: at once), in 5 % steps since every step rewrites the
+    start-up terms of all environments."""
+    out = {}
+    for t in terms:
+        if curriculum is None:
+            out[t] = 1.0
+            continue
+        start = curriculum[1] if t in LATE_TERMS else curriculum[0]
+        x = (it - start + 1) / ramp if ramp > 0 else float(it >= start)
+        out[t] = math.floor(min(max(x, 0.0), 1.0) * 20) / 20
+    return out
 
 
 @dataclass(frozen=True)

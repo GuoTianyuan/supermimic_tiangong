@@ -30,7 +30,7 @@ import torch
 import supermimic.networks as networks
 from supermimic.dr import DRCfg
 from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM
+from supermimic.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM
 from supermimic.motion import CONTROL_DT, MotionLib
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
@@ -98,9 +98,11 @@ if args.ckpt:
         raise ValueError("not a tiangong3 checkpoint")
     K, Hh = ck["args"]["goal_frames"], ck["args"]["hist"]
     networks.AMP_DTYPE = torch.bfloat16 if ck["args"].get("amp", "none") == "bf16" and dev.startswith("cuda") else None
-    pi = Policy(OBS_DIM, 73 * K, hist=Hh).to(dev)
+    pi = Policy(OBS_DIM, 73 * K, hist=Hh, soft_clip_actions=ck["args"].get("act_soft_clip", False)).to(dev)
     pi.load_state_dict(ck["pi"])
     pi.eval()
+# previous action at reset, as in training (supermimic/env.py)
+RESET_A_PREV = ck["args"].get("reset_a_prev", "zero") if args.ckpt else "pose"
 
 
 def rotation() -> np.ndarray:
@@ -133,6 +135,8 @@ def rollout(c: int):
     reset(f)
     tgt_prev = d.qpos[qadr].copy()
     a_prev = torch.zeros(1, 29, device=dev)
+    if RESET_A_PREV == "pose":
+        a_prev[0] = torch.tensor((tgt_prev - default_q) / alpha, dtype=torch.float32, device=dev).clamp(-ACTION_CLIP, ACTION_CLIP)
     hist, ret, failed, steps = None, 0.0, False, 0
     next_push = rng.uniform(*push_cfg.push_interval_s) / CONTROL_DT
     rec = {"root_p": [], "root_quat": [], "q": [], "f": []}

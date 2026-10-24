@@ -180,6 +180,43 @@ Evaluation return 0.824 at 1.24 h of training (paper: 0.82 at 1.2 h on an H100) 
 * Torso-CoM and friction are randomized once per environment at start-up (BeyondMimic's
   start-up events); joint offsets are resampled every episode. Episodes time out after 10 s or at
   the clip end (bootstrapped, not terminal).
+* **Stabilizers for multi-GPU / large-dataset runs**, which otherwise showed recurring collapses
+  (critic overestimates exploited by the policy):
+  * Normalizers freeze after `2e8 · WORLD · num_envs / 4096` samples (critic: `pi_batch`), i.e. at the
+    same iteration as on one GPU with 4096 envs.
+  * Action inputs (policy `a_{t−1}`, world-model `a` and `a_{t−1}`) use fixed per-joint statistics of
+    the actions that hold the reference poses, std ≥ 0.5 (`--act_norm running`: running statistics).
+  * The extended `--dr` context entries (in [−1, 1]) are normalized with fixed mean 0 / std 1/√3 in the
+    world model and the critic: with a curriculum they are constant until their stage starts, and
+    running statistics would freeze around that constant.
+  * Critic: fp32 even under `--amp bf16`; LayerNorm hidden layers (`--no-critic_layer_norm`); λ-targets
+    from an EMA target critic (`--critic_tau 0.05` per iteration); values clamped to ±G_max = 0.1/(1−γ) = 10
+    in the targets and in the policy's bootstrap; Huber loss (δ = 1) weighted by the imagined survival
+    probability.
+  * The policy output is soft-clipped (`--no-act_soft_clip`): identity up to |a| = 15, then a C¹ tanh
+    saturation towards the simulator's clip of 20, so imagination sees the actions the simulator applies.
+    It is part of `Policy.forward`, i.e. of the deployed policy.
+  * Episodes start with the previous action that holds the reset pose, (q − q0 − Δq0)/α, instead of 0
+    (`--reset_a_prev zero`); with 0, the first step's action-rate penalty made end-of-clip bins look worst
+    to the return-based reset sampler. `evaluate.py` and `tools/sim2sim_mujoco.py` follow the checkpoint.
+  * `--dr_curriculum A,B`: `--dr` terms off before iteration A, all but push/delay widen from A, push/delay
+    from B, each from nominal to the full range over `--dr_ramp 2000` iterations in 5 % steps (0: at once).
+    Start-up terms keep one draw per environment and move from nominal towards it.
+  * Logged (appended columns of `train_log.csv`): critic V(s_H) mean / max / fraction above G_max, the
+    window maximum of the policy gradient norm, the action loop gain ‖∂a_t/∂a_{t−1}‖₂ (largest singular
+    value through the observed previous action, median / max over 256 buffer states; above 1 the imagined
+    action loop can amplify itself), and the mean `--dr` range scale. `--detach_a_prev` cuts the policy
+    gradient through that observation in imagination.
+  * `--reset_temp` (paper: 25) sets the reset sampler's inverse temperature; `--motion_exclude REGEX`
+    skips motion files by name. `evaluate.py` also reports failures per motion group (the name before
+    `__`); `tools/make_eval_subset.py` builds a fixed-seed eval set with a few clips of every group.
+  * A diverged simulator state (non-finite, or an entry beyond 1e3) ends its episode with reward 0 and is
+    stored as a standing-still step; normalizers skip non-finite rows, and world-model / critic steps with
+    a non-finite gradient norm apply zero gradients. One such state otherwise reached the reset sampler
+    (`multinomial` assert) and, through the merged normalizers, every rank. Counted in `sim_nonfinite`.
+    A resumed run drops the `train_log.csv` rows after its checkpoint.
+  * Resumed runs keep the checkpoint's `--act_norm`, `--reset_a_prev`, `--critic_layer_norm` and
+    `--act_soft_clip` (checkpoints from before these options: `running`, `zero`, off, off).
 * Do not run under a virtual-memory `ulimit -v`: Isaac Lab + Warp reserve ~430 GB of *virtual*
   address space (CUDA VA reservations; RSS ~3 GB) and Warp's CUDA-graph capture needs its mempool,
   which cannot initialize under such a limit. Cap memory with the container's cgroup
@@ -205,3 +242,14 @@ Evaluation return 0.824 at 1.24 h of training (paper: 0.82 at 1.2 h on an H100) 
 The code in this repository is released under the [MIT License](LICENSE).
 
 Copyright (c) 2026 ETH Zurich, Chong Zhang.
+
+
+
+./sm_native.sh run python tools/prepare_motion_dir.py --src /media/wbc_full --out data/wbc_full
+
+./sm_native.sh train wbc_full_dr_v2 --gpu all --robot tiangong3 --motion_dir data/wbc_full \
+  --dr all --dr_curriculum 3000,6000 --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000
+
+./sm_native.sh status                 # 进度、ETA、各卡显存
+./sm_native.sh logs wbc_full_v1       # 跟随输出（Ctrl+C 只退出查看）
+ssh -p 2210 -N -L 16006:127.0.0.1:16006 root@10.108.3.194   # 在本机执行，然后打开 http://127.0.0.1:16006

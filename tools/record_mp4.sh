@@ -4,8 +4,14 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-CKPT=${1:-logs/wbc_full_v1/ckpt_006000.pt}
+CKPT=${1:-logs/wbc_full_dr_v3/ckpt_010000.pt}
 MOTION=${2:-data/tiangong_motion/motion1.npz}
+# a raw NPZ (e.g. /media/wbc_full/x.npz) has no validation metadata; use its prepared copy under data/
+if [[ "$MOTION" == *.npz && ! -f "$MOTION.metadata.json" ]]; then
+    for m in data/*/"$(basename "$MOTION")"; do
+        if [[ -f "$m.metadata.json" ]]; then echo "using validated copy $m"; MOTION=$m; break; fi
+    done
+fi
 RUN_DIR=$(dirname "$CKPT")
 NAME=$(basename "$CKPT" .pt)_$(basename "$MOTION" .npz)
 OUT=${3:-$RUN_DIR/$NAME.mp4}

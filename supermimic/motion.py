@@ -6,6 +6,7 @@ import glob
 import json
 import hashlib
 import os
+import re
 
 import numpy as np
 import torch
@@ -16,6 +17,11 @@ from .rotations import mat_to_6d, quat_slerp, quat_to_mat, so3_log, yaw_mat
 
 CONTROL_DT = 0.02
 BIN_FRAMES = 50  # 1 s bins for return-based reset sampling
+
+
+def motion_group(name: str) -> str:
+    """``walk__qingtong1000__BG_Brisk_walking_00012`` -> ``walk``; names without ``__`` drop the trailing index."""
+    return name.split("__")[0] if "__" in name else re.sub(r"_\d+$", "", name)
 
 
 class MotionLib:
@@ -102,12 +108,15 @@ class MotionLib:
             self.frame_bin[s:e] = b
 
     @staticmethod
-    def from_dir(path: str, kin: G1Kinematics, device: str, rank: int = 0, world: int = 1) -> MotionLib:
+    def from_dir(path: str, kin: G1Kinematics, device: str, rank: int = 0, world: int = 1, exclude: str | None = None) -> MotionLib:
         """Load all motions, or with ``world > 1`` every ``world``-th file starting at ``rank``
-        (all files on every rank when there are fewer files than ranks)."""
+        (all files on every rank when there are fewer files than ranks). ``exclude``: regex; files whose
+        name it matches (``re.search``) are skipped."""
         files = [path] if os.path.isfile(path) else sorted(glob.glob(os.path.join(path, "*.csv")) + glob.glob(os.path.join(path, "*.npz")))
+        if exclude:
+            files = [f for f in files if not re.search(exclude, os.path.basename(f))]
         if not files:
-            raise FileNotFoundError(f"No motion files found at {path}")
+            raise FileNotFoundError(f"No motion files found at {path}" + (f" outside --motion_exclude {exclude!r}" if exclude else ""))
         if len(files) >= world:
             files = files[rank::world]
         return MotionLib(files, kin, device)
