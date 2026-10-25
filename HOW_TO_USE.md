@@ -65,7 +65,8 @@ cd /media/roy/supermimic_vibed
 | `joint_friction` | 每个关节 | 启动时 | 见上表 | 0.001–0.6 |
 | `delay` | 控制延迟 | 每回合 | 0–4 个 5 ms 子步，所有关节同一个值 | 0–4 个 5 ms 子步，按执行器组分别抽 |
 | `push` | 根速度随机增量 | 每 1–5 s | x/y ±0.5、z ±0.2 m/s；roll/pitch ±0.52、yaw ±0.78 rad/s | 相同 |
-| （始终开） | 地面摩擦 | 启动时 | 0.3–1.2 | 静 0.6–1.6、动 0.6–1.2、恢复系数 0–0.5 |
+| （始终开） | 脚底摩擦 | 启动时 | tiangong3 0.6–1.6（G1 仍是 0.3–1.2） | 静 0.6–1.6、动 0.6–1.2、恢复系数 0–0.5（地面恢复系数 0，实际无弹性） |
+| `contact`（不在 `all` 里，见 0.1） | 脚底接触软硬 | 启动时 | solref 时间常数 0.01–0.02 s，solimp 0.9–0.99 | 无（PhysX 刚性接触） |
 | （始终开） | 躯干质心偏移 | 启动时 | x ±0.025、y/z ±0.05 m | x −0.025–0.035、y/z ±0.05 m |
 
 `--dr_curriculum A,B` 让这些项分阶段打开：第 A 次迭代起放宽除 `push`、`delay` 外的各项，第 B 次起放宽 `push`、`delay`；
@@ -100,6 +101,50 @@ cd /media/roy/supermimic_vibed
   `feet_slide`、`joint_torque`。
 - 终止：这里是根高度误差 > 0.25 m 或倾斜 > 0.8；BeyondMimic 用持续若干步的高度和姿态误差，以及脚踝高度。
 - 地面摩擦、躯干质心范围和延迟的抽法见上面的随机化表。
+
+## 0.1 减少部署时脚抖：脚底接触随机化 + 关节加速度惩罚（与 mimic 分支相同）
+
+部署（xsim_mujoco，1 ms 步长，网格脚底，接触很硬）时脚踝会高频抖动。训练里接触偏软，策略没见过硬接触。
+这里加了三处改动，和 mimic 分支的舞蹈训练一致：
+
+1. **`--dr contact`：脚底接触软硬随机化。** 每个环境启动时给 8 个脚底碰撞体抽一个 MuJoCo 接触参数：
+   solref 时间常数在 0.01–0.02 s 之间按对数均匀抽（0.01 = 2 × 5 ms 物理步长，是本仿真能稳定的最硬值），
+   solimp 跟着在 (0.9, 0.95) 到 (0.99, 0.99) 之间线性变化；脚底的 solmix 设成 1000，让脚底参数在和地面混合时占主导。
+   抽到的软硬程度作为一维 xi 喂给世界模型和 critic（xi 从 180 变成 181）。
+   这一项**不包含在 `all` 里**，要写 `--dr all,contact`；它和其他 `--dr` 项一样受 `--dr_curriculum` 控制。
+2. **脚底摩擦 0.6–1.6**（tiangong3，始终开），对齐 BeyondMimic 的静摩擦范围。
+3. **关节加速度惩罚**：`--dynamics dexevt` 时自动打开，权重 −2e-6 × Σ(q̈²)，对所有关节，q̈ 由相邻两个控制步的关节速度差得到。
+   权重和 mimic 舞蹈奖励的 −5e-6 等价（舞蹈奖励整体乘了 0.4，论文奖励没有）。不加 `--dynamics dexevt` 时是 0，和以前一样。
+
+### 怎么开（H800 多卡）
+
+```bash
+# 从头训练
+./sm_native.sh train wbc_full_dexevt_contact --gpu all --robot tiangong3 --motion_dir data/wbc_full \
+  --dynamics dexevt --dr all,contact --dr_curriculum 3000,6000 \
+  --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000 -d
+
+# 从已有的 dexevt 模型接着训练（换一个 run 名，新的 xi 维度会自动补上）
+./sm_native.sh train wbc_full_dexevt_contact --gpu all --robot tiangong3 --motion_dir data/wbc_full \
+  --dynamics dexevt --dr all,contact --dr_curriculum 3000,6000 \
+  --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000 -d \
+  --resume logs/wbc_full_dexevt/last.pt
+```
+
+从不带 `contact` 的 checkpoint 续训时会打印 `Added 1 xi input(s) with zero weights ...`：世界模型和 critic 第一层
+新增一列零权重（Adam 状态和归一化统计也一起补齐），所以续训开始时的行为和原模型完全一样。策略网络不看 xi，导出的 ONNX
+输入输出不变，xmigcs 的 `smdance` 不用改。
+
+### 怎么确认生效
+
+```
+ Domain randomization: friction, joint offsets, torso COM + pd, push, mass, armature, joint_friction, delay, contact (xi 181)
+    Smoothness penalty / tracking: 58.7% (sum qdd^2 1.16e+05)
+```
+
+第二行是新加的：平滑惩罚（`action_rate` + 关节加速度）占跟踪奖励的比例，以及 Σq̈² 的均值。`train_log.csv` 末尾多了
+`smooth_pen_frac`、`joint_acc` 两列，TensorBoard 里也有对应曲线。训练初期比例较高（主要是 `action_rate`），
+正常情况下会随训练下降；如果一直很高、跟踪学不上去，说明惩罚太重。
 
 ## 1. 多卡全量动作训练（最常用）
 

@@ -30,11 +30,11 @@ import torch
 import supermimic.networks as networks
 from supermimic.dr import DRCfg
 from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM
+from supermimic.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM, reward_cfg
 from supermimic.motion import CONTROL_DT, MotionLib
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
-from supermimic.tiangong3 import motor_params, set_dynamics
+from supermimic.tiangong3 import get_dynamics, motor_params, set_dynamics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ckpt", default=None, help="policy checkpoint; without it the reference is played back open loop")
@@ -75,7 +75,7 @@ dev = args.device
 set_dynamics(args.dynamics or (torch.load(args.ckpt, map_location="cpu")["args"].get("dynamics", "default") if args.ckpt else "default"))
 kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion_dir or DEFAULT_MOTION, kin, dev)
-mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
+mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(get_dynamics()))
 clips = [motion.names.index(c) for c in args.clips] if args.clips else list(range(len(motion.names)))
 
 m = build_model()
@@ -162,7 +162,7 @@ def rollout(c: int):
         tgt_prev = target
         f1, steps = f + 1, steps + 1
         S1, f1t = state(), torch.tensor([f1], device=dev)
-        ret += mdp.reward(S1, f1t, a, a_prev).item()
+        ret += mdp.reward(S1, f1t, a, a_prev, qd_prev=S[5]).item()
         if bool(mdp.termination(S1, f1t)):
             failed = True
             break

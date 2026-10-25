@@ -149,6 +149,7 @@ G1_CFG = ArticulationCfg(
 ROBOT_NAME = os.environ.get('SUPERMIMIC_ROBOT', 'g1')
 TORSO_BODY = 'torso_link'
 DEFAULT_MOTION = os.path.join(DATA_DIR, 'lafan1_g1')
+FRICTION_RANGE = (0.3, 1.2)  # robot-ground friction drawn per environment (paper)
 
 
 def set_dynamics(name):
@@ -163,7 +164,7 @@ def get_dynamics():
 if ROBOT_NAME == 'tiangong3':
     from .tiangong3 import (G1_JOINT_NAMES, TRACKED_BODIES, TORSO_BODY,
         URDF_PATH, MJCF_PATH, USD_PATH, USD_DIR, DEFAULT_MOTION,
-        DEFAULT_JOINT_POS, default_joint_pos_list, action_scale, G1_CFG, set_dynamics, get_dynamics)
+        DEFAULT_JOINT_POS, default_joint_pos_list, action_scale, G1_CFG, set_dynamics, get_dynamics, FRICTION_RANGE)
 elif ROBOT_NAME != 'g1':
     raise ValueError(f'Unknown robot: {ROBOT_NAME}')
 JOINT_NAMES = G1_JOINT_NAMES

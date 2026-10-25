@@ -8,6 +8,7 @@ reference-motion states drawn by return-based bin sampling (paper Appendix D.1).
 from __future__ import annotations
 
 import math
+import re
 
 import torch
 import warp as wp
@@ -20,10 +21,11 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
 from isaaclab.utils import configclass, instantiate, replace
 
-from .dr import ARMATURE, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, parse_terms, to_unit, uniform
+from .dr import (ARMATURE, CONTACT, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, parse_terms,
+                 to_unit, uniform)  # fmt: skip
 from .mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, flatten_state
 from .motion import CONTROL_DT, MotionLib
-from .robot import G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
+from .robot import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
 from .rotations import mat_to_quat, quat_to_mat, so3_exp
 
 SIM_STATE_BOUND = 1e3  # |entries| of a sane state (positions in m, velocities in m/s and rad/s)
@@ -99,7 +101,7 @@ class TrackingSim:
         if not self.randomize:
             self.xi[:, 0] = 1.0
         else:
-            self.xi[:, 0] = torch.empty(self.N, device=dev).uniform_(0.3, 1.2)
+            self.xi[:, 0] = torch.empty(self.N, device=dev).uniform_(*FRICTION_RANGE)
             com = torch.stack(
                 (
                     torch.empty(self.N, device=dev).uniform_(-0.025, 0.025),
@@ -141,7 +143,7 @@ class TrackingSim:
         # ground shapes (body == -1): lowest friction of the range, since MuJoCo takes the max of a pair
         shape_body = wp.to_torch(model.shape_body)
         mu_all = wp.to_torch(model.shape_material_mu)
-        mu_all[shape_body < 0] = 0.3 if self.randomize else 1.0
+        mu_all[shape_body < 0] = FRICTION_RANGE[0] if self.randomize else 1.0
 
     def _apply_friction(self):
         self._mu_view[:] = self.xi[:, :1]
@@ -167,7 +169,33 @@ class TrackingSim:
         self.u_arm = uniform(self.arm_lo, self.arm_hi, (N, 29), dev)
         self.u_fric = uniform(*c.joint_friction, (N, 29), dev)
         self.u_mass = uniform(*c.mass_scale, (N, len(MASS_SEGMENTS)), dev)
+        if "contact" in c.terms:
+            self._setup_contact()
+            self.xi[:, CONTACT] = -1.0
+            self.u_contact = torch.rand(N, device=dev)  # 0: contact_soft, 1: contact_hard
         self._apply_startup_dr(self.dr_on)
+
+    def _setup_contact(self):
+        """Per-environment views of the MuJoCo contact parameters of the foot collision shapes. The feet get a
+        large solmix, so that their solref / solimp, not the shared ground's, apply to foot-ground contacts."""
+        model = self.sim.backend_manager.get_model()
+        mj = model.mujoco
+        ids = [[] for _ in range(self.N)]
+        for s, label in enumerate(model.shape_label):
+            parts = label.split("/")
+            env = re.search(r"/env_(\d+)/", label)
+            if env and len(parts) > 1 and re.fullmatch(r".*ankle_roll.*link", parts[-2]):
+                ids[int(env.group(1))].append(s)
+        if not ids[0] or any(len(i) != len(ids[0]) for i in ids):
+            raise RuntimeError(f"found {sorted({len(i) for i in ids})} foot collision shapes per environment")
+        self.foot_shapes = torch.tensor(ids, device=self.device)  # (N, shapes per env)
+        if bool((wp.to_torch(mj.solref_mode)[self.foot_shapes] != 1).any()):  # SOLREF_MODE_RAW
+            raise RuntimeError("the foot shapes need raw MuJoCo solref values (mjc:solref in the robot USD)")
+        self._solref, self._solimp = wp.to_torch(mj.solref), wp.to_torch(mj.geom_solimp)
+        wp.to_torch(mj.geom_solmix)[self.foot_shapes] = 1e3
+        phys_dt = CONTROL_DT / 4
+        if self.dr.contact_hard[0] < 2 * phys_dt - 1e-9:
+            raise ValueError(f"contact_hard time constant {self.dr.contact_hard[0]} s is below 2 physics steps ({phys_dt} s)")
 
     def _apply_startup_dr(self, terms: frozenset[str]):
         """Start-up terms, fixed per environment until their scale changes."""
@@ -186,6 +214,17 @@ class TrackingSim:
             r.set_masses_index(masses=self.mass0 * m)
             r.set_inertias_index(inertias=self.inertia0 * m.unsqueeze(-1))
             self.xi[:, MASS] = to_unit(mass, *c.mass_scale)
+        if "contact" in terms:
+            h = (s["contact"] * self.u_contact).unsqueeze(-1)
+            lo, hi = (torch.tensor(x, device=self.device) for x in (c.contact_soft, c.contact_hard))
+            tc = lo[0] * (hi[0] / lo[0]) ** h  # log-uniform in the time constant
+            imp = lo[1:] + h * (hi[1:] - lo[1:])
+            k = self.foot_shapes.shape[1]
+            self._solref[self.foot_shapes, 0] = tc.expand(-1, k)
+            self._solimp[self.foot_shapes, 0] = imp[:, :1].expand(-1, k)
+            self._solimp[self.foot_shapes, 1] = imp[:, 1:].expand(-1, k)
+            self.sim.backend_manager.add_model_change(ModelFlags.SHAPE_PROPERTIES)
+            self.xi[:, CONTACT] = 2 * h.squeeze(-1) - 1
 
     def set_dr_scale(self, scale: dict[str, float]):
         """Change the range scale of ``dr`` terms mid-training (missing terms: 0): start-up terms and push
@@ -338,7 +377,7 @@ class TrackingSim:
         self.scene.update(CONTROL_DT)
         S1 = self.state()
         f1 = f + 1
-        r, terms = self.mdp.reward(S1, f1, a, a_prev, terms=True)
+        r, terms = self.mdp.reward(S1, f1, a, a_prev, terms=True, qd_prev=S[5])
         term = self.mdp.termination(S1, f1)
         s, s1 = flatten_state(S), flatten_state(S1)
         # A diverged physics state (rare) would poison the reset sampler and, through the normalizers merged

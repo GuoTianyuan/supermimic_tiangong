@@ -7,6 +7,10 @@ the policy has to work across the whole range; a parameter missing from ``xi`` w
 world model towards average dynamics. Any term switches to one extended layout whose size does not
 depend on which terms are on, so checkpoints resume across term sets; terms that are off keep their
 nominal value. The extended entries are stored normalized to [-1, 1] over their range.
+
+``contact`` (foot-ground contact stiffness) came later: it appends one more entry, is not part of
+``all`` (whose meaning old checkpoints store) and is asked for as ``all,contact``. train.py widens the
+first layers of a checkpoint without it when resuming with it.
 """
 
 from __future__ import annotations
@@ -19,7 +23,8 @@ import torch
 from .mdp import XI_DIM
 from .robot import JOINT_NAMES, ROBOT_NAME
 
-TERMS = ("pd", "push", "mass", "armature", "joint_friction", "delay")
+TERMS = ("pd", "push", "mass", "armature", "joint_friction", "delay", "contact")
+ALL_TERMS = frozenset(TERMS) - {"contact"}  # what "all" meant when the checkpoints stored it
 
 if ROBOT_NAME == "tiangong3":
     from .tiangong3 import MASS_SEGMENTS, mass_segment
@@ -35,15 +40,18 @@ JOINT_FRICTION = slice(ARMATURE.stop, ARMATURE.stop + NJ)
 MASS = slice(JOINT_FRICTION.stop, JOINT_FRICTION.stop + len(MASS_SEGMENTS))
 DELAY = MASS.stop
 XI_DIM_DR = DELAY + 1
+CONTACT = XI_DIM_DR  # only with the contact term
 
 
 def parse_terms(spec: str | None) -> frozenset[str]:
-    """``"pd,push"`` or ``"all"``; ``""``, ``"none"`` and ``"base"`` add nothing to the paper's randomization."""
+    """``"pd,push"``, ``"all"`` (every term but contact) or ``"all,contact"``; ``""``, ``"none"`` and ``"base"``
+    add nothing to the paper's randomization."""
     if not spec or spec in ("none", "base"):
         return frozenset()
-    terms = frozenset(TERMS) if spec == "all" else frozenset(t.strip() for t in spec.split(",") if t.strip())
+    names = {t.strip() for t in spec.split(",") if t.strip()}
+    terms = (names - {"all"}) | (ALL_TERMS if "all" in names else frozenset())
     if unknown := terms - set(TERMS):
-        raise ValueError(f"unknown --dr term(s) {sorted(unknown)}; choose from {', '.join(TERMS)} or all")
+        raise ValueError(f"unknown --dr term(s) {sorted(unknown)}; choose from {', '.join(TERMS)}, all or all,contact")
     if terms and ROBOT_NAME != "tiangong3":
         raise ValueError("--dr is only available for --robot tiangong3 (G1 keeps the 33-dim xi of its checkpoints)")
     return terms
@@ -103,10 +111,16 @@ class DRCfg:
     joint_friction: tuple[float, float] = (0.001, 0.6)  # MuJoCo frictionloss [N m], at start-up; PhysX's is unitless
     viscous_friction: bool = False  # the same draw also as viscous friction [N m s/rad]
     max_delay: int = 4  # 5 ms physics substeps that still track the previous target, every episode
+    # foot-ground contact (MuJoCo solref time constant, solimp dmin, dmid) per environment at start-up, from the
+    # default of the training USD (and of MuJoCo) towards xsim_mujoco's floor (0.002 s, 0.99, 0.99). MuJoCo
+    # raises time constants below two physics steps to that floor: 10 ms with the 5 ms steps here, as xsim's
+    # 2 ms is at 1 ms steps.
+    contact_soft: tuple[float, float, float] = (0.02, 0.9, 0.95)
+    contact_hard: tuple[float, float, float] = (0.01, 0.99, 0.99)
 
     @property
     def xi_dim(self) -> int:
-        return XI_DIM_DR if self.terms else XI_DIM
+        return XI_DIM_DR + ("contact" in self.terms) if self.terms else XI_DIM
 
     @classmethod
     def for_dynamics(cls, terms: frozenset[str], dynamics: str = "default") -> "DRCfg":

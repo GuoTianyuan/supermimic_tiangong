@@ -56,10 +56,17 @@ class RewardCfg:
     root_pos_std: float = 0.3
     root_ori_std: float = 0.4
     w_action_rate: float = -0.1
+    w_joint_acc: float = 0.0  # sum of squared joint accelerations over the control step [(rad/s^2)^2]
     w_joint_limit: float = -2.0
     soft_limit_factor: float = 0.9
     term_height: float = 0.25
     term_tilt: float = 0.8
+
+
+def reward_cfg(dynamics: str = "default") -> RewardCfg:
+    """The paper's reward; with the DexEVT dynamics also a small joint-acceleration penalty (as the mimic
+    branch's dance profile, about 1 % of the tracking reward), against foot jitter on hard ground."""
+    return RewardCfg(w_joint_acc=-2e-6) if dynamics == "dexevt" else RewardCfg()
 
 
 def flatten_state(S) -> torch.Tensor:
@@ -116,8 +123,9 @@ class MDP:
         return o + (2 * torch.rand_like(o) - 1) * self.obs_noise
 
     # ---------------- reward / termination ----------------
-    def reward(self, S, f, a, a_prev, terms: bool = False):
-        """Per-step reward (already multiplied by dt) comparing S with reference frame f."""
+    def reward(self, S, f, a, a_prev, terms: bool = False, qd_prev=None):
+        """Per-step reward (already multiplied by dt) comparing S with reference frame f; ``qd_prev``: the joint
+        velocities one control step before S (needed by ``w_joint_acc``)."""
         c, m = self.cfg, self.motion
         p, R, v, w, q, qd = S
         bp, bR, bv, bw = self.kin.forward(p, R, v, w, q, qd)
@@ -143,14 +151,21 @@ class MDP:
         )
         r_rate = ((a - a_prev) ** 2).sum(-1)
         r_lim = (torch.relu(q - self.soft_hi) + torch.relu(self.soft_lo - q)).sum(-1)
-        r = (r_track + c.w_action_rate * r_rate + c.w_joint_limit * r_lim) * CONTROL_DT
+        pen_smooth = c.w_action_rate * r_rate
+        r_acc = None
+        if c.w_joint_acc and qd_prev is not None:
+            r_acc = (((qd - qd_prev) / CONTROL_DT) ** 2).sum(-1)
+            pen_smooth = pen_smooth + c.w_joint_acc * r_acc
+        r = (r_track + pen_smooth + c.w_joint_limit * r_lim) * CONTROL_DT
         if terms:
             return r, {
                 "track": r_track * CONTROL_DT,
+                "pen_smooth": pen_smooth * CONTROL_DT,
                 "e_body_pos": e_pos,
                 "e_body_ori": e_ori,
                 "e_root_pos": e_rp,
                 "action_rate": r_rate,
+                "joint_acc": r_acc if r_acc is not None else torch.zeros_like(r_rate),
                 "joint_limit": r_lim,
             }
         return r

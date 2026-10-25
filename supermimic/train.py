@@ -71,7 +71,8 @@ parser.add_argument("--resume", type=str, default=None)
 parser.add_argument("--amp", type=str, default="bf16", choices=["none", "bf16"], help="autocast dtype for MLP matmuls")
 parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
 parser.add_argument("--dr", type=str, default="", help="extra domain randomization for deployment (tiangong3): comma list of "
-                    "pd, push, mass, armature, joint_friction, delay, or all; see supermimic/dr.py")  # fmt: skip
+                    "pd, push, mass, armature, joint_friction, delay, contact, or all (all but contact; all,contact "
+                    "adds it); see supermimic/dr.py")  # fmt: skip
 parser.add_argument("--dr_curriculum", type=str, default="", help="A,B: no --dr terms before iteration A, all but "
                     "push and delay from A, all from B")  # fmt: skip
 parser.add_argument("--dr_ramp", type=int, default=2000, help="iterations over which each --dr_curriculum stage widens "
@@ -113,7 +114,7 @@ from supermimic.dr import LATE_TERMS, DRCfg, curriculum_scale, describe, describ
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import (ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD, MDP, OBS_A_PREV, OBS_DIM, XI_DIM,
-                            invariant_features, normalize_xi, unflatten_state)  # fmt: skip
+                            invariant_features, normalize_xi, reward_cfg, unflatten_state)  # fmt: skip
 from supermimic.motion import CONTROL_DT, MotionLib
 import supermimic.networks as networks
 from supermimic.networks import Critic, Policy, WorldModel
@@ -155,7 +156,7 @@ t_load = time.time()
 motion = MotionLib.from_dir(args.motion_dir, kin, dev, RANK, WORLD, exclude=args.motion_exclude)
 print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frames} frames, "
       f"loaded in {time.time() - t_load:.0f} s", flush=True)
-mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
+mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
 K, Hh, HZ = args.goal_frames, args.hist, args.horizon
 GOAL_DIM = 73 * K
 CRITIC_IN = INV_DIM + CRITIC_EXTRA + dr.xi_dim + GOAL_DIM
@@ -184,6 +185,27 @@ def make_critic() -> Critic:
 
 
 critic = make_critic()
+
+
+def widen_xi(ck: dict, old_xi: int, n: int):
+    """Insert ``n`` xi inputs after the checkpoint's ``old_xi`` into its world model and critics, with zero
+    first-layer weights and Adam moments, so that they start out unused, and the fixed statistics of the
+    extended xi entries."""
+
+    def widen(sd: dict, at: int, norm: str, opt: dict | None):
+        cat = lambda x, fill: torch.cat((x[..., :at], x.new_full((*x.shape[:-1], n), fill), x[..., at:]), -1)  # noqa: E731
+        sd["net.0.weight"] = cat(sd["net.0.weight"], 0.0)
+        sd[f"{norm}.mean"] = cat(sd[f"{norm}.mean"], float(XI_EXT_STATS[0][0]))
+        sd[f"{norm}.var"] = cat(sd[f"{norm}.var"], float(XI_EXT_STATS[1][0]) ** 2)
+        if opt is not None and 0 in opt["state"]:  # net.0.weight is the first parameter
+            for k in ("exp_avg", "exp_avg_sq"):
+                opt["state"][0][k] = cat(opt["state"][0][k], 0.0)
+
+    widen(ck["wm"], wm.in_dim - n, "in_norm", ck.get("opt_wm"))
+    at = INV_DIM + CRITIC_EXTRA + old_xi
+    for key, opt in (("critic", ck.get("opt_v")), ("critic_targ", None)):
+        if key in ck:
+            widen(ck[key], at, "norm", opt)
 
 
 def reference_action_stats() -> tuple[torch.Tensor, torch.Tensor]:
@@ -218,6 +240,13 @@ if ck is not None:
         # all term sets share one xi layout (supermimic/dr.py), which differs from the paper's 33 entries
         raise ValueError(f"Checkpoint was trained {f'with --dr {ck_dr}' if ck_dr else 'without --dr'}; resume it "
                          f"{'with some --dr terms' if ck_dr else 'without --dr'} (the xi layouts differ)")  # fmt: skip
+    ck_xi = DRCfg(parse_terms(ck_dr)).xi_dim
+    if ck_xi > dr.xi_dim:
+        raise ValueError(f"Checkpoint was trained with --dr {ck_dr}; keep contact in --dr (the xi layouts differ)")
+    if ck_xi < dr.xi_dim:
+        widen_xi(ck, ck_xi, dr.xi_dim - ck_xi)
+        print(f"[rank {RANK}] Added {dr.xi_dim - ck_xi} xi input(s) with zero weights to the checkpoint's world model "
+              "and critic.", flush=True)
     wm.load_state_dict(ck["wm"]), pi.load_state_dict(ck["pi"])
     opt_wm.load_state_dict(ck["opt_wm"]), opt_pi.load_state_dict(ck["opt_pi"])
     try:
@@ -305,8 +334,8 @@ def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
     return S1, a, o_hist, f1, motion.goal(f1, K)
 
 
-def _reward_term(S, f, a, a_prev):
-    return mdp.reward(S, f, a, a_prev), mdp.soft_termination(S, f)
+def _reward_term(S, f, a, a_prev, qd_prev):
+    return mdp.reward(S, f, a, a_prev, qd_prev=qd_prev), mdp.soft_termination(S, f)
 
 
 def _critic_input(S, f, xi_n, g):
@@ -334,7 +363,9 @@ def set_requires_grad(m: nn.Module, flag: bool):
 # sm_native.sh reads some columns by position: new ones go at the end
 CSV_FIELDS = ["iteration", "wall_h", "sim_steps", "wm_loss", "wm_err8", "pi_loss", "v_loss", "imag_rew", "pi_gradnorm",
               "imag_survival", "sim_rew", "ep_len", "ep_ret_norm", "term_frac", "it_per_s", "lr",
-              "v_end_mean", "v_end_max", "v_end_over", "pi_gradnorm_max", "a_gain_med", "a_gain_max", "dr_scale", "sim_nonfinite"]  # fmt: skip
+              "v_end_mean", "v_end_max", "v_end_over", "pi_gradnorm_max", "a_gain_med", "a_gain_max", "dr_scale", "sim_nonfinite",
+              "smooth_pen_frac", "joint_acc"]  # fmt: skip
+SMOOTH_KEYS = ("pen_smooth", "track", "joint_acc")
 # TensorBoard sorts groups by name, so the numeric prefixes put the tracking metrics first.
 TB_TAGS = {
     "sim_rew": "1_tracking/sim_reward_per_step",
@@ -352,6 +383,8 @@ TB_TAGS = {
     "a_gain_max": "3_policy_imagination/action_loop_gain_max",
     "dr_scale": "1_tracking/dr_range_scale_mean",
     "sim_nonfinite": "1_tracking/diverged_sim_states",
+    "smooth_pen_frac": "1_tracking/smoothness_penalty_over_tracking_reward",
+    "joint_acc": "1_tracking/joint_acc_sq_sum_rad2_per_s4",
     "v_loss": "4_critic/value_loss",
     "v_end_mean": "4_critic/horizon_value_mean",
     "v_end_max": "4_critic/horizon_value_max",
@@ -393,6 +426,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
     else:
         lines.append(("Policy updates", f"start after iteration {args.wm_only_iters}"))
     lines.append(("Sim reward per step", f"{r['sim_rew']:.3f}"))
+    lines.append(("Smoothness penalty / tracking", f"{100 * r['smooth_pen_frac']:.1f}% (sum qdd^2 {r['joint_acc']:.3g})"))
     if n_done:
         lines += [("Mean episode length", f"{r['ep_len']:.1f} steps ({r['ep_len'] * CONTROL_DT:.1f} s)"),
                   ("Mean episode return (normalized)", f"{r['ep_ret_norm']:.3f}"),
@@ -466,7 +500,8 @@ def policy_update():
     flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
     S_all = tuple(flat([St[i] for St in Ss]) for i in range(6))
     f_all = flat(Fs)
-    r, d = reward_term(S_all, f_all, flat(As), flat(Aps))
+    qd_prev = flat([S0[5]] + [St[5] for St in Ss[:-1]])
+    r, d = reward_term(S_all, f_all, flat(As), flat(Aps), qd_prev)
     r, d = r.view(HZ, B), d.view(HZ, B)
     alive = torch.cumprod(1 - d, 0)  # c_{t+1}
     c_t = torch.cat((torch.ones(1, B, device=dev), alive[:-1]), 0)
@@ -582,6 +617,8 @@ with launch_simulation(sim_cfg, args):
             wm.out_norm.update(wm.targets(S0, S1))
             sim_steps += args.num_envs * WORLD
             stats["r"].append(out["r"].mean() / 0.1)
+            for k in SMOOTH_KEYS:
+                stats[k].append(out["terms"][k].mean())
             if "ep_len" in out:
                 stats["ep_len"].append(out["ep_len"].mean())
                 stats["ep_ret"].append(out["ep_ret_norm"].mean())
@@ -630,7 +667,7 @@ with launch_simulation(sim_cfg, args):
         print(" Ctrl+C: stop after the current iteration and save a checkpoint")
         print("=" * 80, flush=True)
 
-    stats = {"r": [], "ep_len": [], "ep_ret": [], "term": [], "done": []}
+    stats = {"r": [], "ep_len": [], "ep_ret": [], "term": [], "done": [], **{k: [] for k in SMOOTH_KEYS}}
     nonfinite_logged = 0
     # The replay buffer is not checkpointed, so a resumed run refills it before sampling world-model windows.
     if MAIN:
@@ -640,7 +677,8 @@ with launch_simulation(sim_cfg, args):
     if MAIN:
         csv_path = os.path.join(args.log_dir, "train_log.csv")
         header = ",".join(CSV_FIELDS) + "\n"
-        if start_it and os.path.isfile(csv_path):
+        new_csv = not os.path.isfile(csv_path)
+        if start_it and not new_csv:
             with open(csv_path) as fh:
                 lines = fh.readlines()
             # rows of an older version lack the newer columns at the end; rows after the checkpoint are redone
@@ -650,7 +688,7 @@ with launch_simulation(sim_cfg, args):
                     fh.writelines([header] + rows)
                 os.replace(csv_path + ".tmp", csv_path)
         log_f = open(csv_path, "a")
-        if start_it == 0:
+        if start_it == 0 or new_csv:
             log_f.write(header)
         tb = SummaryWriter(os.path.join(args.log_dir, "tensorboard"), purge_step=start_it or None, flush_secs=10)
     t_start = time.time() - wall_offset
@@ -710,7 +748,7 @@ with launch_simulation(sim_cfg, args):
             # losses and per-step rewards are averaged over ranks, maxima taken over ranks; episode statistics are pooled
             vals = [mean(agg[k]) for k in ("wm", "wm8", "pi", "v", "ir", "gn", "surv")] + [mean(stats["r"])]
             gain = a_prev_gain() if it >= args.wm_only_iters else torch.zeros(1, device=dev)
-            vals += [mean(agg["vm"]), mean(agg["vo"]), float(gain.median())]
+            vals += [mean(agg["vm"]), mean(agg["vo"]), float(gain.median())] + [mean(stats[k]) for k in SMOOTH_KEYS]
             maxes = [top(agg["vx"]), top(agg["gn"]), float(gain.max())]
             pooled = [total(stats["ep_len"]), total(stats["ep_ret"]), float(len(stats["ep_len"])), total(stats["term"]), total(stats["done"]),
                       float(env.n_nonfinite - nonfinite_logged)]  # fmt: skip
@@ -723,11 +761,11 @@ with launch_simulation(sim_cfg, args):
                 dist.all_reduce(t, op=dist.ReduceOp.MAX)
                 maxes = t.tolist()
             ep_len_sum, ep_ret_sum, n_ep, n_term, n_done, n_nonfinite = pooled
-            (v_end_mean, v_end_over, gain_med), (v_end_max, gn_max, gain_max) = vals[8:], maxes
+            (v_end_mean, v_end_over, gain_med), (v_end_max, gn_max, gain_max) = vals[8:11], maxes
             dr_mean = sum(dr_scale.values()) / max(len(dr_scale), 1)
             row = [done_it, (now - t_start) / 3600, sim_steps, *vals[:8], ep_len_sum / max(n_ep, 1), ep_ret_sum / max(n_ep, 1),
                    n_term / max(n_done, 1), ips, lr, v_end_mean, v_end_max, v_end_over, gn_max, gain_med, gain_max, dr_mean,
-                   int(n_nonfinite)]  # fmt: skip
+                   int(n_nonfinite), -vals[11] / max(vals[12], 1e-9), vals[13]]  # fmt: skip
             if MAIN:
                 log_f.write(",".join(f"{x:.6g}" if isinstance(x, float) else str(x) for x in row) + "\n")
                 log_f.flush()

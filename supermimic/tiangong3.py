@@ -88,6 +88,10 @@ def mass_segment(link):
         link = _parent[link][0]
     return MASS_SEGMENTS.index(link)
 
+# Robot-ground friction drawn per environment: DexEVT's static friction range (EventCfg physics_material),
+# which holds xsim_mujoco's 1.5.
+FRICTION_RANGE = (0.6, 1.6)
+
 def _actuators():
     acts = {}
     for name in JOINT_NAMES:

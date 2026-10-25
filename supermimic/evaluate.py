@@ -50,7 +50,7 @@ import supermimic.networks as networks
 from supermimic.dr import DRCfg, describe, parse_terms
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP
+from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP, reward_cfg
 from supermimic.motion import MotionLib, motion_group
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
@@ -74,7 +74,7 @@ DYNAMICS = run_dynamics()
 set_dynamics(DYNAMICS)
 kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion_dir, kin, dev)
-mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
+mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(DYNAMICS))
 C = len(motion.names)
 dr = DRCfg.for_dynamics(parse_terms(args.dr), DYNAMICS)
 RANDOMIZE = args.dr not in ("", "none")
@@ -114,7 +114,7 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
     clip_end = motion.clip_end.repeat(R)
     ret = torch.zeros(C * R, device=dev)
     hist = None
-    traj = {"root_p": [], "root_quat": [], "q": [], "f": [], "alive": []}
+    traj = {"root_p": [], "root_quat": [], "q": [], "qd": [], "a": [], "f": [], "alive": []}
     while not bool(env.done_eval.all()):
         S = env.state()
         o = mdp.obs(S, env.a_prev, env.xi, env.f)
@@ -127,7 +127,8 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
             from supermimic.rotations import mat_to_quat
 
             traj["root_p"].append(S[0][:C].cpu()), traj["root_quat"].append(mat_to_quat(S[1][:C]).cpu())
-            traj["q"].append(S[4][:C].cpu()), traj["f"].append(env.f[:C].cpu()), traj["alive"].append(alive[:C].cpu())
+            traj["q"].append(S[4][:C].cpu()), traj["qd"].append(S[5][:C].cpu()), traj["a"].append(a[:C].cpu())
+            traj["f"].append(env.f[:C].cpu()), traj["alive"].append(alive[:C].cpu())
         out = env.step(a)
         ret += torch.where(alive, out["r"], 0.0)
         env.f = torch.minimum(env.f, clip_end - 1)  # finished clips keep stepping; keep f+1 in range
