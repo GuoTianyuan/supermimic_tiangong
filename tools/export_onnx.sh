@@ -11,6 +11,12 @@ cd "$(dirname "$0")/.."
 
 CKPT=${1:?usage: tools/export_onnx.sh <ckpt> <motion.npz> [out.onnx]}
 MOTION=${2:?usage: tools/export_onnx.sh <ckpt> <motion.npz> [out.onnx]}
+# a raw NPZ (e.g. /media/wbc_full/x.npz) has no validation metadata; use its prepared copy under data/
+if [[ "$MOTION" == *.npz && ! -f "$MOTION.metadata.json" ]]; then
+    for m in data/*/"$(basename "$MOTION")"; do
+        if [[ -f "$m.metadata.json" ]]; then echo "using validated copy $m"; MOTION=$m; break; fi
+    done
+fi
 RUN_DIR=$(dirname "$CKPT")
 OUT=${3:-$RUN_DIR/$(basename "$RUN_DIR")_$(basename "$CKPT" .pt)_$(basename "$MOTION" .npz).onnx}
 
