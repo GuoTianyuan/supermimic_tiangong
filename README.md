@@ -25,6 +25,8 @@ motion. Clips: dance, jumps, fall-and-get-up, sprint.*
 
 Progress and timestamps: [MILESTONES.md](MILESTONES.md).
 
+**Tiangong3 / H800 使用说明（多卡全量动作训练命令、随机化选项、所有脚本）：[HOW_TO_USE.md](HOW_TO_USE.md)。**
+
 ## Layout
 
 | Path | What |
@@ -242,14 +244,3 @@ Evaluation return 0.824 at 1.24 h of training (paper: 0.82 at 1.2 h on an H100) 
 The code in this repository is released under the [MIT License](LICENSE).
 
 Copyright (c) 2026 ETH Zurich, Chong Zhang.
-
-
-
-./sm_native.sh run python tools/prepare_motion_dir.py --src /media/wbc_full --out data/wbc_full
-
-./sm_native.sh train wbc_full_dr_v2 --gpu all --robot tiangong3 --motion_dir data/wbc_full \
-  --dr all --dr_curriculum 3000,6000 --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000
-
-./sm_native.sh status                 # 进度、ETA、各卡显存
-./sm_native.sh logs wbc_full_v1       # 跟随输出（Ctrl+C 只退出查看）
-ssh -p 2210 -N -L 16006:127.0.0.1:16006 root@10.108.3.194   # 在本机执行，然后打开 http://127.0.0.1:16006
