@@ -101,11 +101,21 @@ class DRCfg:
     armature: tuple[float, float] = (0.002, 0.06)  # [kg m^2], at start-up
     ankle_armature: tuple[float, float] = (0.01, 0.06)
     joint_friction: tuple[float, float] = (0.001, 0.6)  # MuJoCo frictionloss [N m], at start-up; PhysX's is unitless
+    viscous_friction: bool = False  # the same draw also as viscous friction [N m s/rad]
     max_delay: int = 4  # 5 ms physics substeps that still track the previous target, every episode
 
     @property
     def xi_dim(self) -> int:
         return XI_DIM_DR if self.terms else XI_DIM
+
+    @classmethod
+    def for_dynamics(cls, terms: frozenset[str], dynamics: str = "default") -> "DRCfg":
+        """The ranges for a joint dynamics preset of supermimic/tiangong3.py."""
+        if dynamics == "default":
+            return cls(terms)
+        if dynamics != "dexevt":
+            raise ValueError(f"unknown dynamics {dynamics!r}")
+        return cls(terms, ankle_armature=cls.armature, viscous_friction=True)
 
 
 def to_unit(x, lo, hi):

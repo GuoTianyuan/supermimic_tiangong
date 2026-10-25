@@ -37,6 +37,8 @@ parser.add_argument("--dr", type=str, default="none", help="none: nominal | base
                     "noise | base plus supermimic/dr.py terms (comma list, or all)")  # fmt: skip
 parser.add_argument("--repeats", type=int, default=1, help="rollouts per motion, each with its own random draws (with --dr)")
 parser.add_argument("--seed", type=int, default=0, help="seed of the random draws, the same for every checkpoint")
+parser.add_argument("--dynamics", choices=["default", "dexevt"], default=None,
+                    help="joint dynamics preset (default: from the run's args.json, else from the first --ckpt)")
 add_launcher_args(parser)
 args = parser.parse_args()
 os.environ["SUPERMIMIC_ROBOT"] = args.robot
@@ -51,16 +53,30 @@ from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP
 from supermimic.motion import MotionLib, motion_group
 from supermimic.networks import Policy
-from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list
+from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
+
+
+def run_dynamics() -> str:
+    if args.dynamics:
+        return args.dynamics
+    path = os.path.join(args.run_dir, "args.json")
+    if os.path.isfile(path):
+        return json.load(open(path)).get("dynamics", "default")
+    if args.ckpt:
+        return torch.load(args.ckpt[0], map_location="cpu")["args"].get("dynamics", "default")
+    return "default"
+
 
 torch.backends.cuda.matmul.allow_tf32 = True
 dev = "cuda:0"
+DYNAMICS = run_dynamics()
+set_dynamics(DYNAMICS)
 kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion_dir, kin, dev)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
 C = len(motion.names)
-dr = DRCfg(parse_terms(args.dr))
+dr = DRCfg.for_dynamics(parse_terms(args.dr), DYNAMICS)
 RANDOMIZE = args.dr not in ("", "none")
 R = args.repeats
 SUFFIX = "" if not RANDOMIZE else "_dr-" + args.dr.replace(",", "+")

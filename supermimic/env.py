@@ -63,7 +63,9 @@ class TrackingSim:
                  dr_scale: dict[str, float] | None = None, reset_a_prev: str = "pose", reset_temp: float = 25.0):
         self.device = sim_cfg.device
         self.sim = SimulationContext(sim_cfg)
-        self.scene = instantiate(TrackingSceneCfg(num_envs=num_envs, env_spacing=0.0, replicate_physics=True))
+        scene_cfg = TrackingSceneCfg(num_envs=num_envs, env_spacing=0.0, replicate_physics=True)
+        scene_cfg.robot = replace(G1_CFG, prim_path="{ENV_REGEX_NS}/Robot")  # the actuators of set_dynamics()
+        self.scene = instantiate(scene_cfg)
         self.sim.reset()
         self.robot = self.scene["robot"]
         assert list(self.robot.joint_names) == G1_JOINT_NAMES, self.robot.joint_names
@@ -175,7 +177,8 @@ class TrackingSim:
             self.xi[:, ARMATURE] = to_unit(d.joint_armature.torch, self.arm_lo, self.arm_hi)
         if "joint_friction" in terms:
             fric = self.fric0 + s["joint_friction"] * (self.u_fric - self.fric0)
-            r.write_joint_friction_coefficient_to_sim_index(joint_friction_coeff=fric)
+            r.write_joint_friction_coefficient_to_sim_index(
+                joint_friction_coeff=fric, joint_viscous_friction_coeff=fric if c.viscous_friction else None)
             self.xi[:, JOINT_FRICTION] = to_unit(d.joint_friction_coeff.torch, *c.joint_friction)
         if "mass" in terms:
             mass = 1.0 + s["mass"] * (self.u_mass - 1.0)

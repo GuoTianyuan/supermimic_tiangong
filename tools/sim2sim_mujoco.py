@@ -34,7 +34,7 @@ from supermimic.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM
 from supermimic.motion import CONTROL_DT, MotionLib
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
-from supermimic.tiangong3 import motor_params
+from supermimic.tiangong3 import motor_params, set_dynamics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ckpt", default=None, help="policy checkpoint; without it the reference is played back open loop")
@@ -47,6 +47,8 @@ parser.add_argument("--kp_scale", type=float, default=1.0)
 parser.add_argument("--kd_scale", type=float, default=1.0)
 parser.add_argument("--push", action="store_true", help="random root velocity changes every 1-5 s, as with train.py --dr push")
 parser.add_argument("--self_collision", action="store_true", help="training disables self-collision")
+parser.add_argument("--dynamics", choices=["default", "dexevt"], default=None,
+                    help="joint dynamics preset of supermimic/tiangong3.py (default: the checkpoint's)")
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--record", default=None, help="save trajectories (npz) for tools/render.py")
 parser.add_argument("--out", default=None, help="write the results as JSON")
@@ -70,6 +72,7 @@ def build_model() -> mujoco.MjModel:
 
 
 dev = args.device
+set_dynamics(args.dynamics or (torch.load(args.ckpt, map_location="cpu")["args"].get("dynamics", "default") if args.ckpt else "default"))
 kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion_dir or DEFAULT_MOTION, kin, dev)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))

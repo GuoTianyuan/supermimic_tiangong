@@ -131,6 +131,14 @@ checkpoint，结果写入 `logs/<run>/eval.csv`（`--every` 按每 2000 次迭�
   --dr all --dr_curriculum 3000,6000 --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000
 ```
 - 不带 `--dr` 的训练与之前完全一样，`wbc_full_v1` 可以照常 `--resume`。
+- `--dynamics dexevt` 改用与 cheerleading_competition（BeyondMimic DexEVT）对齐的关节参数和 DR 范围：脚踝力矩上限
+  55 N·m（默认 100），所有关节 armature 0.002–0.06（默认脚踝 0.01–0.06），关节摩擦 0.001–0.6 同时作为库仑和粘滞摩擦
+  （默认只有库仑）。不加时为 `default`，与之前完全一样；该选项存进 checkpoint，评估和 sim2sim 自动沿用：
+
+```bash
+./sm_native.sh train wbc_full_dexevt --gpu all --robot tiangong3 --motion_dir data/wbc_full --dynamics dexevt \
+  --dr all --dr_curriculum 3000,6000 --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000
+```
 - 基线和 DR 策略在同一组随机参数下评估：
 
 ```bash

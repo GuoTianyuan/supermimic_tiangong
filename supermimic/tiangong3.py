@@ -50,6 +50,14 @@ ANKLE_EFFORT, ANKLE_SCALE_EFFORT = 100., 55.
 ARMATURE, ANKLE_ARMATURE = .031, .035
 _limits = {j.get('name'): j.find('limit') for j in _tree.findall('joint') if j.get('type') != 'fixed'}
 
+# Joint dynamics presets (train.py --dynamics):
+#   default: 100 N*m ankles, ankle armature 0.01-0.06, Coulomb joint friction only;
+#   dexevt: the current DexEVT (cheerleading_competition robots/dex_evt.py + EventCfg): 55 N*m ankles,
+#           armature 0.002-0.06 on every joint, and viscous joint friction from the Coulomb range too
+#           (Isaac Lab on Isaac Sim 5 draws static, dynamic and viscous friction; here one draw per joint).
+DYNAMICS = ('default', 'dexevt')
+_dynamics = 'default'
+
 def _key(name):
     return re.sub(r'_[lr]_joint$', '', name).removesuffix('_joint')
 
@@ -57,6 +65,8 @@ def motor_params(name):
     kp, kd = _PD[_key(name)]
     ankle = _key(name).startswith('ankle')
     lim = _limits[name]
+    if _dynamics == 'dexevt':
+        return ANKLE_SCALE_EFFORT if ankle else float(lim.get('effort')), float(lim.get('velocity')), kp, kd, ARMATURE
     effort = ANKLE_EFFORT if ankle else float(lim.get('effort'))
     return effort, float(lim.get('velocity')), kp, kd, ANKLE_ARMATURE if ankle else ARMATURE
 
@@ -78,11 +88,26 @@ def mass_segment(link):
         link = _parent[link][0]
     return MASS_SEGMENTS.index(link)
 
-acts = {}
-for name in JOINT_NAMES:
-    effort, vel, kp, kd, arm = motor_params(name)
-    acts[name] = ImplicitActuatorCfg(joint_names_expr=[name], effort_limit_sim=effort,
-        velocity_limit_sim=vel, stiffness=kp, damping=kd, armature=arm)
+def _actuators():
+    acts = {}
+    for name in JOINT_NAMES:
+        effort, vel, kp, kd, arm = motor_params(name)
+        acts[name] = ImplicitActuatorCfg(joint_names_expr=[name], effort_limit_sim=effort,
+            velocity_limit_sim=vel, stiffness=kp, damping=kd, armature=arm)
+    return acts
+
+def set_dynamics(name):
+    """Switch the joint dynamics preset (see DYNAMICS); call before building the simulator."""
+    global _dynamics
+    if name not in DYNAMICS:
+        raise ValueError(f"unknown dynamics {name!r}; choose from {', '.join(DYNAMICS)}")
+    _dynamics = name
+    G1_CFG.actuators = _actuators()
+
+def get_dynamics():
+    return _dynamics
+
+acts = _actuators()
 G1_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(usd_path=USD_PATH, variants={'Physics':'mujoco'},
         activate_contact_sensors=False,

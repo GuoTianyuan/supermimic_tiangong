@@ -76,6 +76,11 @@ parser.add_argument("--dr_curriculum", type=str, default="", help="A,B: no --dr 
                     "push and delay from A, all from B")  # fmt: skip
 parser.add_argument("--dr_ramp", type=int, default=2000, help="iterations over which each --dr_curriculum stage widens "
                     "its ranges from nominal to full (0: at once)")  # fmt: skip
+parser.add_argument("--dynamics", choices=["default", "dexevt"], default=None,
+                    help="tiangong3 joint dynamics and --dr ranges: default (100 N*m ankles, ankle armature 0.01-0.06, "
+                    "Coulomb friction) | dexevt (current cheerleading_competition DexEVT: 55 N*m ankles, armature "
+                    "0.002-0.06 on every joint, Coulomb and viscous friction 0.001-0.6). Default: default; a resumed "
+                    "run keeps its checkpoint's")  # fmt: skip
 add_launcher_args(parser)
 args = parser.parse_args()
 os.environ["SUPERMIMIC_ROBOT"] = args.robot
@@ -112,11 +117,10 @@ from supermimic.mdp import (ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD,
 from supermimic.motion import CONTROL_DT, MotionLib
 import supermimic.networks as networks
 from supermimic.networks import Critic, Policy, WorldModel
-from supermimic.robot import DEFAULT_MOTION, G1_JOINT_NAMES, action_scale, default_joint_pos_list
+from supermimic.robot import DEFAULT_MOTION, G1_JOINT_NAMES, action_scale, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
-dr = DRCfg(parse_terms(args.dr))
 dr_curriculum = parse_curriculum(args.dr_curriculum)
-if dr_curriculum and not dr.terms:
+if dr_curriculum and not parse_terms(args.dr):
     raise ValueError("--dr_curriculum needs --dr terms")
 if args.dr_ramp < 0:
     raise ValueError("--dr_ramp must be >= 0")
@@ -135,9 +139,14 @@ os.makedirs(args.log_dir, exist_ok=True)
 ck = torch.load(args.resume, map_location=dev) if args.resume else None
 # checkpoints from before these options existed were trained with the second value
 for k, new, old in (("critic_layer_norm", True, False), ("act_soft_clip", True, False), ("act_norm", "ref", "running"),
-                    ("reset_a_prev", "pose", "zero")):  # fmt: skip
+                    ("reset_a_prev", "pose", "zero"), ("dynamics", "default", "default")):  # fmt: skip
     if getattr(args, k) is None:
         setattr(args, k, ck["args"].get(k, old) if ck else new)
+if ck is not None and ck["args"].get("dynamics", "default") != args.dynamics:
+    print(f"[rank {RANK}] Checkpoint was trained with --dynamics {ck['args'].get('dynamics', 'default')}; "
+          f"continuing with --dynamics {args.dynamics} (the world model has to re-adapt).", flush=True)
+set_dynamics(args.dynamics)
+dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
 if MAIN:
     json.dump(vars(args), open(os.path.join(args.log_dir, "args.json"), "w"), indent=2)
 
@@ -604,6 +613,7 @@ with launch_simulation(sim_cfg, args):
         print(f" Motion {args.motion_dir}: {num_clips} clips, {num_frames} frames" + (f" (split over {WORLD} GPUs)" if WORLD > 1 else ""))
         print(f" {envs} | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
               f" | checkpoint every {args.ckpt_every}")
+        print(f" Joint dynamics: {args.dynamics}")
         print(" Domain randomization: friction, joint offsets, torso COM" + (f" + {describe(dr.terms)} (xi {dr.xi_dim})" if dr.terms else ""))
         if dr_curriculum:
             print(f"   curriculum: + {describe(dr.terms - LATE_TERMS) or '-'} from iteration {dr_curriculum[0]}, "
