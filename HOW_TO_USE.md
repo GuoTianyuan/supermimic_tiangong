@@ -232,7 +232,32 @@ LAUNCHER=./sm_native.sh tools/record_mp4.sh logs/<run>/ckpt_100000.pt data/tiang
   --ckpt logs/<run>/ckpt_100000.pt --delay_ms 10 --joint_friction 0.3 --push --self_collision
 ```
 
-## 4. 所有脚本
+## 4. 导出 ONNX（部署到 xmigcs `policy/smdance`）
+
+多 motion 训练出来的是一个通用网络，但部署时要指定跟踪哪个动作：**指定一个 motion，导出一个 ONNX**。
+这个 motion 的参考帧会打包进 ONNX，xmigcs 的 `smdance` 不用改。想换动作，就用同一个 checkpoint 换个 motion 再导出一次。
+
+```bash
+# 本机（Docker）
+tools/export_onnx.sh logs/wbc_full_dexevt/ckpt_100000.pt data/wbc_full/<motion>.npz
+
+# 服务器
+LAUNCHER=./sm_native.sh tools/export_onnx.sh logs/wbc_full_dexevt/ckpt_100000.pt data/wbc_full/<motion>.npz
+
+# 本机导出并直接拷到 xmigcs（之后把 smdance.yaml 的 onnx_path 改成打印出的文件名）
+XMIGCS=/home/eai/Dev/EVT/xmigcs_uv/xmigcs tools/export_onnx.sh logs/wbc_full_dexevt/ckpt_100000.pt data/wbc_full/<motion>.npz
+```
+
+- 输出默认是 `logs/<run>/<run>_<ckpt>_<motion>.onnx`，第三个参数可以指定其他路径。
+- 选的 motion 要求：
+  - 最好是训练集里的动作，至少是同类动作；导出前先用 `tools/record_mp4.sh` 在仿真里跑一遍，确认不摔。
+  - 用 `tools/prepare_motion_dir.py` 或 `tools/prepare_tiangong3.py` 校验过（旁边有 `.metadata.json`）。
+  - 第 0 帧最好接近站立姿态：部署时从第 0 帧开始跟踪。
+- ONNX 输入：`obs`（10 帧 × 99 维观测历史）和 `time_step`（当前参考帧号，50 Hz）；
+  输出：`actions`、`ref_joint_pos`、`ref_root_quat`。关节顺序、默认姿态、动作尺度、PD 增益、`dynamics`、动作长度写在元数据里。
+- `smdance` 的 Kp/Kd 读自 `smdance.yaml`，不读 ONNX；两个分支的天工 3 PD 增益相同，不用改。
+
+## 5. 所有脚本
 
 ### 启动器（仓库根目录）
 
@@ -254,6 +279,7 @@ LAUNCHER=./sm_native.sh tools/record_mp4.sh logs/<run>/ckpt_100000.pt data/tiang
 
 | 脚本 | 作用 |
 |---|---|
+| `export_onnx.sh <ckpt> <motion.npz> [out.onnx]` | 指定一个 motion 导出 ONNX，给 xmigcs `policy/smdance` 用（见第 4 节）；服务器上加 `LAUNCHER=./sm_native.sh`，加 `XMIGCS=<目录>` 直接拷过去。内部调用 `export_onnx.py --ckpt --motion [--out]` |
 | `record_mp4.sh [ckpt] [motion] [out.mp4] [秒数]` | 评估 + 渲染一键录 MP4；服务器上加 `LAUNCHER=./sm_native.sh` |
 | `render.py <traj.npz> <out.mp4>` | 把 `evaluate.py --record` 的轨迹渲染成 MP4（`--clips`、`--seconds`、`--start`、`--global_ghost`） |
 | `sim2sim_mujoco.py` | CPU MuJoCo 里跑策略做 sim2sim（`--delay_ms`、`--joint_friction`、`--kp_scale`、`--kd_scale`、`--push`、`--self_collision`、`--dynamics`） |
@@ -272,7 +298,7 @@ LAUNCHER=./sm_native.sh tools/record_mp4.sh logs/<run>/ckpt_100000.pt data/tiang
 | `test_spawn.py` | 生成机器人并测仿真吞吐 |
 | `bench.py` | 不开仿真，单测世界模型和策略更新的速度 |
 
-## 5. 其他文档
+## 6. 其他文档
 
 | 文档 | 内容 |
 |---|---|
