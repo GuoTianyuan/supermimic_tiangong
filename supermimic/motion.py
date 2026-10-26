@@ -17,6 +17,22 @@ from .rotations import mat_to_6d, quat_slerp, quat_to_mat, so3_log, yaw_mat
 
 CONTROL_DT = 0.02
 BIN_FRAMES = 50  # 1 s bins for return-based reset sampling
+# per-frame goal parts in MotionLib.goal order, with their sizes
+GOAL_PARTS = {"root_pos": 3, "root_rot": 6, "root_lin_vel": 3, "root_ang_vel": 3, "q": 29, "qd": 29}
+
+
+def parse_goal_drop(s: str) -> tuple[str, ...]:
+    """``"root_pos,root_lin_vel"`` -> the goal parts to leave out, in GOAL_PARTS order."""
+    names = {n for n in s.split(",") if n}
+    if names - GOAL_PARTS.keys():
+        raise ValueError(f"unknown goal part(s) {sorted(names - GOAL_PARTS.keys())}; choose from {list(GOAL_PARTS)}")
+    if names == GOAL_PARTS.keys():
+        raise ValueError("the goal needs at least one part")
+    return tuple(n for n in GOAL_PARTS if n in names)
+
+
+def goal_frame_dim(drop: tuple[str, ...] = ()) -> int:
+    return sum(d for n, d in GOAL_PARTS.items() if n not in drop)
 
 
 def motion_group(name: str) -> str:
@@ -127,17 +143,26 @@ class MotionLib:
         fut = f.unsqueeze(-1) + torch.arange(1, K + 1, device=f.device)
         return torch.minimum(fut, end.unsqueeze(-1))
 
-    def goal(self, f: torch.Tensor, K: int) -> torch.Tensor:
-        """Goal features from the reference only: K future frames relative to the current reference frame."""
+    def goal(self, f: torch.Tensor, K: int, drop: tuple[str, ...] = ()) -> torch.Tensor:
+        """Goal features from the reference only: K future frames relative to the current reference frame,
+        without the GOAL_PARTS named in ``drop``."""
         fut = self.future_frames(f, K)  # (B,K)
         H = yaw_mat(self.root_R[f])  # (B,3,3)
         Ht = H.transpose(-1, -2).unsqueeze(1)
-        dp = (Ht @ (self.root_p[fut] - self.root_p[f].unsqueeze(1)).unsqueeze(-1)).squeeze(-1)
-        rot = mat_to_6d(Ht @ self.root_R[fut])
-        feats = torch.cat(
-            (dp, rot, self.root_v_local[fut], self.root_w_local[fut], self.q[fut], self.qd[fut] * 0.1), -1
-        )  # (B,K,73)
-        return feats.reshape(f.shape[0], -1)
+        feats = []
+        if "root_pos" not in drop:
+            feats.append((Ht @ (self.root_p[fut] - self.root_p[f].unsqueeze(1)).unsqueeze(-1)).squeeze(-1))
+        if "root_rot" not in drop:
+            feats.append(mat_to_6d(Ht @ self.root_R[fut]))
+        if "root_lin_vel" not in drop:
+            feats.append(self.root_v_local[fut])
+        if "root_ang_vel" not in drop:
+            feats.append(self.root_w_local[fut])
+        if "q" not in drop:
+            feats.append(self.q[fut])
+        if "qd" not in drop:
+            feats.append(self.qd[fut] * 0.1)
+        return torch.cat(feats, -1).reshape(f.shape[0], -1)  # (B, K * goal_frame_dim)
 
     def ref_state(self, f: torch.Tensor):
         return self.root_p[f], self.root_R[f], self.root_v[f], self.root_w[f], self.q[f], self.qd[f]

@@ -146,6 +146,29 @@ cd /media/roy/supermimic_vibed
 `smooth_pen_frac`、`joint_acc` 两列，TensorBoard 里也有对应曲线。训练初期比例较高（主要是 `action_rate`），
 正常情况下会随训练下降；如果一直很高、跟踪学不上去，说明惩罚太重。
 
+## 0.2 策略的 goal 不看 pelvis 位移和速度（`--goal_drop`）
+
+GMR 重定向出来的 pelvis 位置、线速度、角速度不稳定时，可以把它们从策略的 goal 输入里去掉。每个未来帧的 goal 原来是
+73 维：pelvis 位移 3 + 朝向 6D 6 + 线速度 3 + 角速度 3 + 关节角 29 + 关节速度 29。去掉三项后剩 64 维（朝向、关节角、关节速度）。
+
+```bash
+./sm_native.sh train wbc_full_dexevt_contact_nopelvis --gpu all --robot tiangong3 --motion_dir data/wbc_full \
+  --dynamics dexevt --dr all,contact --dr_curriculum 3000,6000 \
+  --goal_drop root_pos,root_lin_vel,root_ang_vel \
+  --num_envs 8192 --buffer_steps 1000 --iterations 320000 --ckpt_every 2000 -d
+```
+
+可选项：`root_pos`、`root_rot`、`root_lin_vel`、`root_ang_vel`、`q`、`qd`，逗号分隔。设置存进 checkpoint 和
+`logs/<run>/args.json`，`evaluate.py`、`tools/sim2sim_mujoco.py`、`tools/export_onnx.py` 自动按它构造 goal。
+
+注意：
+
+- **只改策略输入。** 奖励（根位置、全身线/角速度跟踪）、终止（根高度）、复位初速度和 critic 的误差特征仍然用完整参考，
+  所以参考里的 pelvis 抖动依然会进奖励。
+- **要从头训练。** goal 维度变了，不能 `--resume` 不带 `--goal_drop` 的 checkpoint（会直接报错）。
+- 导出的 ONNX 输入输出不变（goal 表烘焙在图里），部署端不用改。
+- 走、跑这类有明显位移的动作，策略只能从未来关节轨迹推断移动速度，根位置跟踪可能变差；原地舞蹈类影响小。
+
 ## 1. 多卡全量动作训练（最常用）
 
 ### 1.1 准备全量数据（只需一次；数据有更新时重跑，已校验的会跳过）

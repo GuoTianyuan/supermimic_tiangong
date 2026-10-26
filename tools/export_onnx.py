@@ -40,7 +40,7 @@ import torch.nn as nn
 import supermimic.networks as networks
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import ACTION_CLIP, OBS_DIM
-from supermimic.motion import CONTROL_DT, MotionLib
+from supermimic.motion import CONTROL_DT, MotionLib, parse_goal_drop
 from supermimic.networks import Policy
 from supermimic.robot import JOINT_NAMES, action_scale, default_joint_pos_list
 from supermimic.rotations import mat_to_quat
@@ -78,7 +78,7 @@ def main():
     T = int(motion.clip_len[0])
     f = torch.arange(T)
     with torch.no_grad():
-        goals = motion.goal(f, K)
+        goals = motion.goal(f, K, parse_goal_drop(a_.get("goal_drop", "")))
     pi = Policy(OBS_DIM, goals.shape[1], hist=H, soft_clip_actions=a_.get("act_soft_clip", False))
     pi.load_state_dict(ck["pi"])
     pi.eval()

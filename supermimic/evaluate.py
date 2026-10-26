@@ -51,7 +51,7 @@ from supermimic.dr import DRCfg, describe, parse_terms
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP, reward_cfg
-from supermimic.motion import MotionLib, motion_group
+from supermimic.motion import MotionLib, goal_frame_dim, motion_group, parse_goal_drop
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
@@ -102,7 +102,8 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         raise ValueError("Checkpoint robot does not match --robot")
     K, Hh = a_["goal_frames"], a_["hist"]
     networks.AMP_DTYPE = torch.bfloat16 if a_.get("amp", "none") == "bf16" else None
-    pi = Policy(OBS_DIM, 73 * K, hist=Hh, soft_clip_actions=a_.get("act_soft_clip", False)).to(dev)
+    goal_drop = parse_goal_drop(a_.get("goal_drop", ""))
+    pi = Policy(OBS_DIM, goal_frame_dim(goal_drop) * K, hist=Hh, soft_clip_actions=a_.get("act_soft_clip", False)).to(dev)
     pi.load_state_dict(ck["pi"])
     pi.eval()
     torch.manual_seed(args.seed)  # per-episode draws, pushes and observation noise repeat for every checkpoint
@@ -121,7 +122,7 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         if RANDOMIZE:
             o = mdp.add_noise(o)
         hist = o.unsqueeze(1).repeat(1, Hh, 1) if hist is None else torch.cat((hist[:, 1:], o.unsqueeze(1)), 1)
-        a = pi(hist, motion.goal(env.f, K))
+        a = pi(hist, motion.goal(env.f, K, goal_drop))
         alive = ~env.done_eval.clone()
         if record:  # the first rollout of every motion
             from supermimic.rotations import mat_to_quat

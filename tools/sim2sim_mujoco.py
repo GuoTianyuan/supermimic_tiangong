@@ -31,7 +31,7 @@ import supermimic.networks as networks
 from supermimic.dr import DRCfg
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM, reward_cfg
-from supermimic.motion import CONTROL_DT, MotionLib
+from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 from supermimic.networks import Policy
 from supermimic.robot import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
 from supermimic.tiangong3 import get_dynamics, motor_params, set_dynamics
@@ -101,7 +101,8 @@ if args.ckpt:
         raise ValueError("not a tiangong3 checkpoint")
     K, Hh = ck["args"]["goal_frames"], ck["args"]["hist"]
     networks.AMP_DTYPE = torch.bfloat16 if ck["args"].get("amp", "none") == "bf16" and dev.startswith("cuda") else None
-    pi = Policy(OBS_DIM, 73 * K, hist=Hh, soft_clip_actions=ck["args"].get("act_soft_clip", False)).to(dev)
+    GOAL_DROP = parse_goal_drop(ck["args"].get("goal_drop", ""))
+    pi = Policy(OBS_DIM, goal_frame_dim(GOAL_DROP) * K, hist=Hh, soft_clip_actions=ck["args"].get("act_soft_clip", False)).to(dev)
     pi.load_state_dict(ck["pi"])
     pi.eval()
 # previous action at reset, as in training (supermimic/env.py)
@@ -153,7 +154,7 @@ def rollout(c: int):
         else:
             o = mdp.obs(S, a_prev, xi, ft)
             hist = o.unsqueeze(1).repeat(1, Hh, 1) if hist is None else torch.cat((hist[:, 1:], o.unsqueeze(1)), 1)
-            a = pi(hist, motion.goal(ft, K))
+            a = pi(hist, motion.goal(ft, K, GOAL_DROP))
         target = default_q + alpha * a[0].double().cpu().numpy()
         for i in range(n_sub):
             tgt = tgt_prev if i < n_delay else target

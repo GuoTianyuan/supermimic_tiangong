@@ -31,6 +31,10 @@ parser.add_argument("--buffer_steps", type=int, default=1000)
 parser.add_argument("--utd", type=float, default=0.4, help="updates per vectorized simulator step")
 parser.add_argument("--horizon", type=int, default=32)
 parser.add_argument("--goal_frames", type=int, default=10)
+parser.add_argument("--goal_drop", type=str, default=None,
+                    help="comma list of reference parts left out of the policy's goal input: root_pos (future pelvis "
+                    "displacement), root_rot, root_lin_vel, root_ang_vel, q, qd. Rewards, termination and resets still "
+                    "use the full reference. Default: none; a resumed run keeps its checkpoint's")  # fmt: skip
 parser.add_argument("--hist", type=int, default=10)
 parser.add_argument("--wm_window", type=int, default=8)
 parser.add_argument("--wm_batches", type=int, default=10)
@@ -115,7 +119,7 @@ from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
 from supermimic.mdp import (ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD, MDP, OBS_A_PREV, OBS_DIM, XI_DIM,
                             invariant_features, normalize_xi, reward_cfg, unflatten_state)  # fmt: skip
-from supermimic.motion import CONTROL_DT, MotionLib
+from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 import supermimic.networks as networks
 from supermimic.networks import Critic, Policy, WorldModel
 from supermimic.robot import DEFAULT_MOTION, G1_JOINT_NAMES, action_scale, default_joint_pos_list, set_dynamics
@@ -140,9 +144,14 @@ os.makedirs(args.log_dir, exist_ok=True)
 ck = torch.load(args.resume, map_location=dev) if args.resume else None
 # checkpoints from before these options existed were trained with the second value
 for k, new, old in (("critic_layer_norm", True, False), ("act_soft_clip", True, False), ("act_norm", "ref", "running"),
-                    ("reset_a_prev", "pose", "zero"), ("dynamics", "default", "default")):  # fmt: skip
+                    ("reset_a_prev", "pose", "zero"), ("dynamics", "default", "default"), ("goal_drop", "", "")):  # fmt: skip
     if getattr(args, k) is None:
         setattr(args, k, ck["args"].get(k, old) if ck else new)
+GOAL_DROP = parse_goal_drop(args.goal_drop)
+args.goal_drop = ",".join(GOAL_DROP)
+if ck is not None and parse_goal_drop(ck["args"].get("goal_drop", "")) != GOAL_DROP:
+    raise ValueError(f"Checkpoint was trained with --goal_drop '{ck['args'].get('goal_drop', '')}'; the policy's goal "
+                     "input size differs, so resume it with the same --goal_drop")  # fmt: skip
 if ck is not None and ck["args"].get("dynamics", "default") != args.dynamics:
     print(f"[rank {RANK}] Checkpoint was trained with --dynamics {ck['args'].get('dynamics', 'default')}; "
           f"continuing with --dynamics {args.dynamics} (the world model has to re-adapt).", flush=True)
@@ -158,7 +167,7 @@ print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frame
       f"loaded in {time.time() - t_load:.0f} s", flush=True)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
 K, Hh, HZ = args.goal_frames, args.hist, args.horizon
-GOAL_DIM = 73 * K
+GOAL_DIM = goal_frame_dim(GOAL_DROP) * K
 CRITIC_IN = INV_DIM + CRITIC_EXTRA + dr.xi_dim + GOAL_DIM
 
 wm = WorldModel(xi_dim=dr.xi_dim, a_prev=bool(dr.terms)).to(dev)
@@ -331,7 +340,7 @@ def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
     f1 = f + 1
     o1 = mdp.add_noise(mdp.obs(S1, a.detach() if args.detach_a_prev else a, xi, f1))
     o_hist = torch.cat((o_hist[:, 1:], o1.unsqueeze(1)), 1)
-    return S1, a, o_hist, f1, motion.goal(f1, K)
+    return S1, a, o_hist, f1, motion.goal(f1, K, GOAL_DROP)
 
 
 def _reward_term(S, f, a, a_prev, qd_prev):
@@ -489,7 +498,7 @@ def policy_update():
     set_requires_grad(wm, False)
     set_requires_grad(critic, False)
     B = args.pi_batch
-    g0 = motion.goal(f, K)
+    g0 = motion.goal(f, K, GOAL_DROP)
     g = g0
     S0 = S
     Ss, As, Aps, Fs, Gs = [], [], [], [], []
@@ -583,7 +592,7 @@ def a_prev_gain(n: int = 256) -> torch.Tensor:
         o = mdp.add_noise(mdp.obs(unflatten_state(h["s"]), h["a_prev"], h["xi"], h["f"]))
     x = o[:, -1, OBS_A_PREV : OBS_A_PREV + 29].clone().requires_grad_(True)
     newest = torch.cat((o[:, -1, :OBS_A_PREV], x, o[:, -1, OBS_A_PREV + 29 :]), -1)
-    a = pi(torch.cat((o[:, :-1], newest.unsqueeze(1)), 1), motion.goal(s["f"], K))
+    a = pi(torch.cat((o[:, :-1], newest.unsqueeze(1)), 1), motion.goal(s["f"], K, GOAL_DROP))
     jac = torch.stack([torch.autograd.grad(a[:, j].sum(), x, retain_graph=j < 28)[0] for j in range(29)], 1)
     return torch.linalg.matrix_norm(jac, ord=2)
 
@@ -605,7 +614,7 @@ with launch_simulation(sim_cfg, args):
             o = mdp.add_noise(mdp.obs(S, env.a_prev, env.xi, env.f))
             fresh = env.ep_step == 0
             obs_hist = torch.where(fresh[:, None, None], o.unsqueeze(1).expand_as(obs_hist), torch.cat((obs_hist[:, 1:], o.unsqueeze(1)), 1))
-            g = motion.goal(env.f, K)
+            g = motion.goal(env.f, K, GOAL_DROP)
             pi.obs_norm.update(o)
             pi.goal_norm.update(g)
             a = pi(obs_hist, g)
