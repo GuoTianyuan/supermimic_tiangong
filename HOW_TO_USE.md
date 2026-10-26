@@ -313,7 +313,8 @@ tools/export_onnx.sh logs/wbc_full_dexevt/ckpt_100000.pt data/wbc_full/<motion>.
 LAUNCHER=./sm_native.sh tools/export_onnx.sh logs/wbc_full_dexevt/ckpt_100000.pt data/wbc_full/<motion>.npz
 
 # 本机导出并直接拷到 xmigcs（之后把 smdance.yaml 的 onnx_path 改成打印出的文件名）
-XMIGCS=/home/eai/Dev/EVT/xmigcs_uv/xmigcs tools/export_onnx.sh logs/wbc_full_dexevt/ckpt_100000.pt data/wbc_full/<motion>.npz
+cd /media/roy/supermimic_vibed
+LAUNCHER=./sm_native.sh tools/export_onnx.sh logs/wbc_full_dexevt_contact/ckpt_090000.pt data/wbc_full/balance__mocap_data__dex_evt_balance__balance_balance007_chr01__a7e541f619.npz
 ```
 
 - 输出默认是 `logs/<run>/<run>_<ckpt>_<motion>.onnx`，第三个参数可以指定其他路径。
