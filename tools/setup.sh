@@ -35,13 +35,15 @@ PIP_ARGS=()
 if [[ -n ${SM_WHEELHOUSE:-} ]]; then
     PIP_ARGS+=(--no-index --find-links "$SM_WHEELHOUSE")
 fi
-"$PY" -m pip install "${PIP_ARGS[@]}" 'pip>=25' wheel uv==0.11.16
+PIP_EXTRA_INDEX_URL= "$PY" -m pip install "${PIP_ARGS[@]}" --index-url "$PIP_INDEX_URL" 'pip>=25' wheel uv==0.11.16
 # uv only accelerates wheel downloads; the environment itself remains Conda.
 UV_ARGS=(--python "$PY" --no-deps --prerelease allow)
 if [[ -n ${SM_WHEELHOUSE:-} ]]; then
     UV_ARGS+=(--no-index --find-links "$SM_WHEELHOUSE")
 else
-    UV_ARGS+=(--default-index "$PIP_INDEX_URL" --index-strategy unsafe-best-match)
+    # First mirror containing the exact locked version wins. Do not prefer an
+    # overseas wheel just because the same version also exists on another index.
+    UV_ARGS+=(--index "$PIP_INDEX_URL" --index-strategy unsafe-first-match)
     read -r -a EXTRA_INDEXES <<< "$PIP_EXTRA_INDEX_URL"
     for index in "${EXTRA_INDEXES[@]}"; do UV_ARGS+=(--index "$index"); done
 fi
