@@ -1,5 +1,7 @@
 # 国内服务器 Conda 部署
 
+本次验证范围和原生训练结果见 [VALIDATION.md](VALIDATION.md)，其中说明了依赖复用及全新下载验证的限制。
+
 代码基线为 `2f2f05fc7a33992b24757a2edb3bf572cd38c0df`，只追加部署相关修改。
 无需 Docker，也不需要另外寻找机器人 USD、mesh 或示例动作。
 

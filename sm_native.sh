@@ -31,10 +31,11 @@ else
 fi
 export SM_PYTHON=$PY
 [ -x "$PY" ] || { echo "error: Python not found at $PY (set SM_PYTHON)" >&2; exit 1; }
-export PATH="$(dirname "$PY"):$PATH" PYTHONUNBUFFERED=1 MPLCONFIGDIR=/tmp/mpl
-export WARP_CACHE_PATH=$(pwd)/.cache/warp TORCHINDUCTOR_CACHE_DIR=$(pwd)/.cache/inductor
-# Isaac Lab caches remote assets under $TMPDIR/https and falls back to them when the server is unreachable.
-mkdir -p "${TMPDIR:-/tmp}/https" && cp -rn .cache/remote_assets/. "${TMPDIR:-/tmp}/https/" 2>/dev/null || true
+export PATH="$(dirname "$PY"):$PATH" PYTHONUNBUFFERED=1
+export MPLCONFIGDIR=${MPLCONFIGDIR:-$PWD/.cache/matplotlib}
+export WARP_CACHE_PATH=${WARP_CACHE_PATH:-$PWD/.cache/warp}
+export TORCHINDUCTOR_CACHE_DIR=${TORCHINDUCTOR_CACHE_DIR:-$PWD/.cache/inductor}
+mkdir -p "$MPLCONFIGDIR" "$WARP_CACHE_PATH" "$TORCHINDUCTOR_CACHE_DIR"
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -60,7 +61,9 @@ cmd_train() {
     tmux has-session -t "sm-$run" 2>/dev/null && die "sm-$run is already running (./sm_native.sh attach|logs|stop $run)"
     [ -e "logs/$run/train_log.csv" ] && [ $resume = 0 ] && die "logs/$run already has a run; pick a new name or add --resume logs/$run/last.pt"
     mkdir -p "logs/$run"
-    tmux new-session -d -s "sm-$run" -x 200 -y 50 "$(printf '%q ' "$SELF" _train "$run" "${fwd[@]}")"
+    tmux new-session -d -s "sm-$run" -x 200 -y 50 "$(printf '%q ' env \
+        "SM_PYTHON=$PY" "MPLCONFIGDIR=$MPLCONFIGDIR" "WARP_CACHE_PATH=$WARP_CACHE_PATH" \
+        "TORCHINDUCTOR_CACHE_DIR=$TORCHINDUCTOR_CACHE_DIR" "$SELF" _train "$run" "${fwd[@]}")"
     if [ $detach = 1 ] || ! [ -t 1 ]; then
         echo "Started tmux session sm-$run. ./sm_native.sh logs $run | attach $run | stop $run"
         return

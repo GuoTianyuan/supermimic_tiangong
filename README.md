@@ -16,6 +16,7 @@ bash tools/setup.sh
 
 - [操作手册](HOW_TO_USE.md)
 - [随库资源及许可](DATA_ASSETS.md)
+- [Conda 仿真与训练验收记录](VALIDATION.md)
 - [原始项目说明与结果](README_UPSTREAM.md)
 
 训练实现保留指定提交的行为；部署改动为启动器、依赖安装和本地地面资源路径。
