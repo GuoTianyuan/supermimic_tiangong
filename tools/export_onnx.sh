@@ -21,7 +21,7 @@ RUN_DIR=$(dirname "$CKPT")
 OUT=${3:-$RUN_DIR/$(basename "$RUN_DIR")_$(basename "$CKPT" .pt)_$(basename "$MOTION" .npz).onnx}
 
 # local: ./sm.sh (docker); on the server: LAUNCHER=./sm_native.sh
-${LAUNCHER:-./sm.sh} run --robot tiangong3 python tools/export_onnx.py --ckpt "$CKPT" --motion "$MOTION" --out "$OUT"
+${LAUNCHER:-./sm_native.sh} run --robot tiangong3 python tools/export_onnx.py --ckpt "$CKPT" --motion "$MOTION" --out "$OUT"
 rm -f "${OUT%.onnx}_check.npz"
 
 if [[ -n "${XMIGCS:-}" ]]; then

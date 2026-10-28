@@ -14,12 +14,22 @@
 #   ./sm_native.sh tb [run...]       TensorBoard for existing runs (Ctrl+C closes it)
 #   ./sm_native.sh run [--gpu N] [--robot R] <command...>
 #
-# SM_PYTHON selects the interpreter (default /media/roy/conda_envs/supermimic/bin/python).
+# SM_PYTHON selects the interpreter (default .conda/bin/python, then activated Conda environment).
 # TensorBoard binds to 127.0.0.1; view it with: ssh -p <port> -L 16006:127.0.0.1:16006 <host>
 set -euo pipefail
 cd "$(dirname "$0")"
 SELF=$(pwd)/$(basename "$0")
-PY=${SM_PYTHON:-/media/roy/conda_envs/supermimic/bin/python}
+if [ -n "${SM_PYTHON:-}" ]; then
+    PY=$SM_PYTHON
+elif [ -x "$PWD/.conda/bin/python" ]; then
+    PY=$PWD/.conda/bin/python
+elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
+    PY=$CONDA_PREFIX/bin/python
+else
+    echo "Run bash tools/setup.sh first, or set SM_PYTHON to your Conda Python." >&2
+    exit 1
+fi
+export SM_PYTHON=$PY
 [ -x "$PY" ] || { echo "error: Python not found at $PY (set SM_PYTHON)" >&2; exit 1; }
 export PATH="$(dirname "$PY"):$PATH" PYTHONUNBUFFERED=1 MPLCONFIGDIR=/tmp/mpl
 export WARP_CACHE_PATH=$(pwd)/.cache/warp TORCHINDUCTOR_CACHE_DIR=$(pwd)/.cache/inductor

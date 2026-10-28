@@ -34,7 +34,8 @@ mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
 sim_cfg = make_sim(dev, args)
 with launch_simulation(sim_cfg, args):
     env = TrackingSim(sim_cfg, args.num_envs, motion, mdp, eval_mode=True)
-    frames = motion.clip_start[torch.arange(args.num_envs, device=dev) % len(motion.names)] + 100
+    clips = torch.arange(args.num_envs, device=dev) % len(motion.names)
+    frames = motion.clip_start[clips] + torch.minimum(motion.clip_len[clips] - 2, torch.full_like(clips, 100))
     env.reset(torch.arange(args.num_envs, device=dev), frames)
     env.scene.update(0.0)
     S = env.state()
@@ -57,7 +58,9 @@ with launch_simulation(sim_cfg, args):
     print("ref body vs FK(sim) pos err", (motion.body_p[frames] - bp).norm(dim=-1).max().item())
     # open-loop reference playback via joint targets
     rs = []
-    for t in range(150):
+    # Evaluation does not reset completed clips; stop before short samples run out.
+    steps = min(150, int((motion.clip_end[clips] - frames).min().item()))
+    for t in range(steps):
         f1 = env.f + 1
         a = (motion.q[f1] - env.default_q) / env.alpha
         out = env.step(a)

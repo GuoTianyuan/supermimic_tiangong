@@ -1,0 +1,7 @@
+# Preserve third-party data byte-for-byte, including original CRLF line endings.
+data/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+data/lafan1_g1/*.csv -diff
+*.npz binary
+*.usd binary
+*.STL binary
+*.tar.gz binary

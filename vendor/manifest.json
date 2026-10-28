@@ -1,0 +1,12 @@
+{
+  "isaaclab-46d6cc3.tar.gz": {
+    "destination": "IsaacLab",
+    "commit": "46d6cc3d7b115906fad12efd372fbf69f4e3d3ed",
+    "sha256": "9bf42b12e92b466a4f47fac10e1c9b8c8c3ff1a4fb66aa8fc4b3d486c0ebe8ff"
+  },
+  "newton-71eeba1.tar.gz": {
+    "destination": ".vendor/newton",
+    "commit": "71eeba16a717d4dcf0b9dd7056a7b6f863054dc3",
+    "sha256": "f74ab29d13c0417991aaf231b4215760f6c85b5268869cc9798db06598dcf1f2"
+  }
+}

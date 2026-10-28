@@ -1,0 +1,1343 @@
+#usda 1.0
+(
+    customLayerData = {
+        string creator = "MuJoCo USD Converter v0.6.1"
+    }
+    defaultPrim = "tiangong3"
+    kilogramsPerUnit = 1
+    metersPerUnit = 1
+    subLayers = [
+        @./robot.usda@
+    ]
+    upAxis = "Z"
+)
+
+def Xform "tiangong3" (
+    prepend apiSchemas = ["GeomModelAPI", "IsaacRobotAPI"]
+    assetInfo = {
+        string name = "tiangong3"
+    }
+    kind = "component"
+)
+{
+    float3[] extentsHint = [(-0.11269534, -0.30470353, -1.0003651), (0.16617449, 0.30470353, 0.6899987)]
+    custom rel isaac:physics:robotJoints
+    custom rel isaac:physics:robotLinks
+    custom token isaac:robotType = "Default"
+
+    def Scope "Geometry"
+    {
+        def Xform "pelvis" (
+            prepend apiSchemas = ["IsaacLinkAPI"]
+        )
+        {
+            quatf xformOp:orient = (1, 0, 0, 0)
+            float3 xformOp:scale = (1, 1, 1)
+            double3 xformOp:translate = (0, 0, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+            def Xform "pelvis" (
+                instanceable = true
+                prepend references = @./instances.usda@</Instances/pelvis>
+            )
+            {
+                quatd xformOp:orient = (1, 0, 0, 0)
+                double3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (0, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+
+            def Xform "pelvis_1" (
+                prepend apiSchemas = ["MaterialBindingAPI"]
+                displayName = "pelvis"
+                instanceable = true
+                prepend references = @./instances.usda@</Instances/pelvis_1>
+                uiHints = {
+                    string displayName = "pelvis"
+                }
+            )
+            {
+                rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial> (
+                    bindMaterialAs = "weakerThanDescendants"
+                )
+                quatd xformOp:orient = (1, 0, 0, 0)
+                double3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (0, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+            }
+
+            def Xform "hip_pitch_l_link" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+                quatf xformOp:orient = (0.99619466, -0.08715359, -0.000058458223, 0.0006681925)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (-0.00010305, 0.076815, -0.11847)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                def Xform "hip_pitch_l_link" (
+                    instanceable = true
+                    prepend references = @./instances.usda@</Instances/hip_pitch_l_link>
+                )
+                {
+                    quatd xformOp:orient = (1, 0, 0, 0)
+                    double3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+
+                def Xform "hip_roll_l_link" (
+                    prepend apiSchemas = ["IsaacLinkAPI"]
+                )
+                {
+                    quatf xformOp:orient = (0.9961949, 0.08715344, 0, 0)
+                    float3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0.073992, -0.026966)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                    def Xform "hip_roll_l_link" (
+                        instanceable = true
+                        prepend references = @./instances.usda@</Instances/hip_roll_l_link>
+                    )
+                    {
+                        quatd xformOp:orient = (1, 0, 0, 0)
+                        double3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, 0)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                    }
+
+                    def Sphere "Sphere" (
+                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                    )
+                    {
+                        float3[] extent = [(-0.05, -0.05, -0.05), (0.05, 0.05, 0.05)]
+                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                            interpolation = "constant"
+                        )
+                        int[] primvars:displayColor:indices = None
+                        float[] primvars:displayOpacity = [1] (
+                            interpolation = "constant"
+                        )
+                        int[] primvars:displayOpacity:indices = None
+                        double radius = 0.05
+                        quatf xformOp:orient = (1, 0, 0, 0)
+                        float3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, 0)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                    }
+
+                    def Xform "hip_yaw_l_link" (
+                        prepend apiSchemas = ["IsaacLinkAPI"]
+                    )
+                    {
+                        quatf xformOp:orient = (1, 0, 0, 0)
+                        float3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, -0.0785)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                        def Xform "hip_yaw_l_link" (
+                            instanceable = true
+                            prepend references = @./instances.usda@</Instances/hip_yaw_l_link>
+                        )
+                        {
+                            quatd xformOp:orient = (1, 0, 0, 0)
+                            double3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0, 0)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        }
+
+                        def Cylinder "Cylinder" (
+                            prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                        )
+                        {
+                            uniform token axis = "Z"
+                            float3[] extent = [(-0.04, -0.04, -0.09), (0.04, 0.04, 0.09)]
+                            double height = 0.18
+                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                            color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                interpolation = "constant"
+                            )
+                            int[] primvars:displayColor:indices = None
+                            float[] primvars:displayOpacity = [1] (
+                                interpolation = "constant"
+                            )
+                            int[] primvars:displayOpacity:indices = None
+                            double radius = 0.04
+                            quatf xformOp:orient = (1, 0, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0, -0.17)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        }
+
+                        def Xform "knee_pitch_l_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (1, 0, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (-0.012927, 0, -0.30599)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "knee_pitch_l_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/knee_pitch_l_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Cylinder "Cylinder" (
+                                prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                            )
+                            {
+                                uniform token axis = "Z"
+                                float3[] extent = [(-0.035, -0.035, -0.115), (0.035, 0.035, 0.115)]
+                                double height = 0.23
+                                rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                    interpolation = "constant"
+                                )
+                                int[] primvars:displayColor:indices = None
+                                float[] primvars:displayOpacity = [1] (
+                                    interpolation = "constant"
+                                )
+                                int[] primvars:displayOpacity:indices = None
+                                double radius = 0.035
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, -0.21)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Xform "ankle_pitch_l_link" (
+                                prepend apiSchemas = ["IsaacLinkAPI"]
+                            )
+                            {
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, -0.4)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                def Xform "ankle_pitch_l_link" (
+                                    instanceable = true
+                                    prepend references = @./instances.usda@</Instances/ankle_pitch_l_link>
+                                )
+                                {
+                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                    double3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                }
+
+                                def Xform "ankle_roll_l_link" (
+                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                )
+                                {
+                                    quatf xformOp:orient = (1, 0, 0, 0)
+                                    float3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                    def Xform "ankle_roll_l_link" (
+                                        instanceable = true
+                                        prepend references = @./instances.usda@</Instances/ankle_roll_l_link>
+                                    )
+                                    {
+                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                        double3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0, 0, 0)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_left_front_outer" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.03), (0.012, 0.012, 0.03)]
+                                        double height = 0.06
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.085, -0.04, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_left_front_inner" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.03), (0.012, 0.012, 0.03)]
+                                        double height = 0.06
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.085, 0.04, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_left_strip_outer" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.11), (0.012, 0.012, 0.11)]
+                                        double height = 0.22
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (-0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.045, -0.015, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_left_strip_inner" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.11), (0.012, 0.012, 0.11)]
+                                        double height = 0.22
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (-0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.045, 0.015, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            def Xform "hip_pitch_r_link" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+                quatf xformOp:orient = (0.99619466, 0.08715359, 0.000058458223, 0.0006681925)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (0.00010305, -0.076815, -0.11847)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                def Xform "hip_pitch_r_link" (
+                    instanceable = true
+                    prepend references = @./instances.usda@</Instances/hip_pitch_r_link>
+                )
+                {
+                    quatd xformOp:orient = (1, 0, 0, 0)
+                    double3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+
+                def Xform "hip_roll_r_link" (
+                    prepend apiSchemas = ["IsaacLinkAPI"]
+                )
+                {
+                    quatf xformOp:orient = (0.9961949, -0.08715344, 0, 0)
+                    float3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, -0.073992, -0.026966)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                    def Xform "hip_roll_r_link" (
+                        instanceable = true
+                        prepend references = @./instances.usda@</Instances/hip_roll_l_link>
+                    )
+                    {
+                        quatd xformOp:orient = (1, 0, 0, 0)
+                        double3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, 0)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                    }
+
+                    def Sphere "Sphere" (
+                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                    )
+                    {
+                        float3[] extent = [(-0.05, -0.05, -0.05), (0.05, 0.05, 0.05)]
+                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                            interpolation = "constant"
+                        )
+                        int[] primvars:displayColor:indices = None
+                        float[] primvars:displayOpacity = [1] (
+                            interpolation = "constant"
+                        )
+                        int[] primvars:displayOpacity:indices = None
+                        double radius = 0.05
+                        quatf xformOp:orient = (1, 0, 0, 0)
+                        float3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, 0)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                    }
+
+                    def Xform "hip_yaw_r_link" (
+                        prepend apiSchemas = ["IsaacLinkAPI"]
+                    )
+                    {
+                        quatf xformOp:orient = (1, 0, 0, 0)
+                        float3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, -0.0785)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                        def Xform "hip_yaw_r_link" (
+                            instanceable = true
+                            prepend references = @./instances.usda@</Instances/hip_yaw_r_link>
+                        )
+                        {
+                            quatd xformOp:orient = (1, 0, 0, 0)
+                            double3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0, 0)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        }
+
+                        def Cylinder "Cylinder" (
+                            prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                        )
+                        {
+                            uniform token axis = "Z"
+                            float3[] extent = [(-0.04, -0.04, -0.09), (0.04, 0.04, 0.09)]
+                            double height = 0.18
+                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                            color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                interpolation = "constant"
+                            )
+                            int[] primvars:displayColor:indices = None
+                            float[] primvars:displayOpacity = [1] (
+                                interpolation = "constant"
+                            )
+                            int[] primvars:displayOpacity:indices = None
+                            double radius = 0.04
+                            quatf xformOp:orient = (1, 0, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0, -0.17)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        }
+
+                        def Xform "knee_pitch_r_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (1, 0, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (-0.012927, 0, -0.30599)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "knee_pitch_r_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/knee_pitch_r_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Cylinder "Cylinder" (
+                                prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                            )
+                            {
+                                uniform token axis = "Z"
+                                float3[] extent = [(-0.035, -0.035, -0.115), (0.035, 0.035, 0.115)]
+                                double height = 0.23
+                                rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                    interpolation = "constant"
+                                )
+                                int[] primvars:displayColor:indices = None
+                                float[] primvars:displayOpacity = [1] (
+                                    interpolation = "constant"
+                                )
+                                int[] primvars:displayOpacity:indices = None
+                                double radius = 0.035
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, -0.21)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Xform "ankle_pitch_r_link" (
+                                prepend apiSchemas = ["IsaacLinkAPI"]
+                            )
+                            {
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, -0.4)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                def Xform "ankle_pitch_r_link" (
+                                    instanceable = true
+                                    prepend references = @./instances.usda@</Instances/ankle_pitch_r_link>
+                                )
+                                {
+                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                    double3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                }
+
+                                def Xform "ankle_roll_r_link" (
+                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                )
+                                {
+                                    quatf xformOp:orient = (1, 0, 0, 0)
+                                    float3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                    def Xform "ankle_roll_r_link" (
+                                        instanceable = true
+                                        prepend references = @./instances.usda@</Instances/ankle_roll_r_link>
+                                    )
+                                    {
+                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                        double3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0, 0, 0)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_right_front_outer" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.03), (0.012, 0.012, 0.03)]
+                                        double height = 0.06
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.085, -0.04, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_right_front_inner" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.03), (0.012, 0.012, 0.03)]
+                                        double height = 0.06
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.085, 0.04, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_right_strip_outer" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.11), (0.012, 0.012, 0.11)]
+                                        double height = 0.22
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (-0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.045, -0.015, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Cylinder "foot_right_strip_inner" (
+                                        prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                    )
+                                    {
+                                        uniform token axis = "Z"
+                                        float3[] extent = [(-0.012, -0.012, -0.11), (0.012, 0.012, 0.11)]
+                                        double height = 0.22
+                                        rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                        color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayColor:indices = None
+                                        float[] primvars:displayOpacity = [1] (
+                                            interpolation = "constant"
+                                        )
+                                        int[] primvars:displayOpacity:indices = None
+                                        double radius = 0.012
+                                        quatf xformOp:orient = (-0.7071053, 0, 0.70710826, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.045, 0.015, -0.046)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            def Xform "imu_waist_link" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+                quatf xformOp:orient = (0.0000025990305, 0.7075651, -0.7066481, -0.0000025956604)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (-0.081641, -0.00010952, -0.063057)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                def Xform "imu_waist_link" (
+                    instanceable = true
+                    prepend references = @./instances.usda@</Instances/imu_waist_link>
+                )
+                {
+                    quatd xformOp:orient = (1, 0, 0, 0)
+                    double3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+            }
+
+            def Xform "waist_yaw_link" (
+                prepend apiSchemas = ["IsaacLinkAPI"]
+            )
+            {
+                quatf xformOp:orient = (0.99999976, 0, 0, 0.0006905339)
+                float3 xformOp:scale = (1, 1, 1)
+                double3 xformOp:translate = (0, 0, 0)
+                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                def Xform "waist_yaw_link" (
+                    instanceable = true
+                    prepend references = @./instances.usda@</Instances/waist_yaw_link>
+                )
+                {
+                    quatd xformOp:orient = (1, 0, 0, 0)
+                    double3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                }
+
+                def Xform "waist_roll_link" (
+                    prepend apiSchemas = ["IsaacLinkAPI"]
+                )
+                {
+                    quatf xformOp:orient = (1, 0, 0, 0)
+                    float3 xformOp:scale = (1, 1, 1)
+                    double3 xformOp:translate = (0, 0, 0.083796)
+                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                    def Xform "waist_roll_link" (
+                        instanceable = true
+                        prepend references = @./instances.usda@</Instances/waist_roll_link>
+                    )
+                    {
+                        quatd xformOp:orient = (1, 0, 0, 0)
+                        double3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, 0)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                    }
+
+                    def Xform "waist_pitch_link" (
+                        prepend apiSchemas = ["IsaacLinkAPI"]
+                    )
+                    {
+                        quatf xformOp:orient = (1, 0, 0, 0)
+                        float3 xformOp:scale = (1, 1, 1)
+                        double3 xformOp:translate = (0, 0, 0.078424)
+                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                        def Xform "waist_pitch_link" (
+                            instanceable = true
+                            prepend references = @./instances.usda@</Instances/waist_pitch_link>
+                        )
+                        {
+                            quatd xformOp:orient = (1, 0, 0, 0)
+                            double3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0, 0)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        }
+
+                        def Xform "waist_pitch_link_1" (
+                            prepend apiSchemas = ["MaterialBindingAPI"]
+                            displayName = "waist_pitch_link"
+                            instanceable = true
+                            prepend references = @./instances.usda@</Instances/waist_pitch_link_1>
+                            uiHints = {
+                                string displayName = "waist_pitch_link"
+                            }
+                        )
+                        {
+                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial> (
+                                bindMaterialAs = "weakerThanDescendants"
+                            )
+                            quatd xformOp:orient = (1, 0, 0, 0)
+                            double3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0, 0)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                        }
+
+                        def Xform "camera_body_front_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (0.21263996, 0.6743758, 0.67437774, 0.21264094)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0.092709, -0.02375, 0.039976)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "camera_body_front_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/camera_body_front_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+                        }
+
+                        def Xform "imu_head_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (-0.000002597341, -0.7071053, 0.7071083, 0.000002597351)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (-0.057551, 0, 0.42777)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "imu_head_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/imu_head_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+                        }
+
+                        def Xform "radar_head_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (-0.000002597341, 0.7071053, 0.7071083, -0.000002597351)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0.00022262, 0, 0.38237)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "radar_head_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/radar_head_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+                        }
+
+                        def Xform "head_yaw_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (1, 0, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0.00022262, 0, 0.43727)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "head_yaw_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/head_yaw_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Xform "head_pitch_link" (
+                                prepend apiSchemas = ["IsaacLinkAPI"]
+                            )
+                            {
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0.0689, -0.000055575, -0.0008)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                def Xform "head_pitch_link" (
+                                    instanceable = true
+                                    prepend references = @./instances.usda@</Instances/head_pitch_link>
+                                )
+                                {
+                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                    double3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                }
+
+                                def Xform "camera_head_link" (
+                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                )
+                                {
+                                    quatf xformOp:orient = (0.499998, -0.5, 0.500002, -0.5)
+                                    float3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0.01555, 0.011078, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                    def Xform "camera_head_link" (
+                                        instanceable = true
+                                        prepend references = @./instances.usda@</Instances/camera_head_link>
+                                    )
+                                    {
+                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                        double3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0, 0, 0)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+                                }
+                            }
+                        }
+
+                        def Xform "shoulder_pitch_l_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (0.99904823, 0.043619126, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, 0.14552, 0.18664)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "shoulder_pitch_l_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/shoulder_pitch_l_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Xform "shoulder_roll_l_link" (
+                                prepend apiSchemas = ["IsaacLinkAPI"]
+                            )
+                            {
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0.0678, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                def Xform "shoulder_roll_l_link" (
+                                    instanceable = true
+                                    prepend references = @./instances.usda@</Instances/shoulder_roll_l_link>
+                                )
+                                {
+                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                    double3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                }
+
+                                def Xform "shoulder_yaw_l_link" (
+                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                )
+                                {
+                                    quatf xformOp:orient = (1, 0, 0, 0)
+                                    float3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, -0.1004)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                    def Xform "shoulder_yaw_l_link" (
+                                        instanceable = true
+                                        prepend references = @./instances.usda@</Instances/shoulder_yaw_l_link>
+                                    )
+                                    {
+                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                        double3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0, 0, 0)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Xform "elbow_pitch_l_link" (
+                                        prepend apiSchemas = ["IsaacLinkAPI"]
+                                    )
+                                    {
+                                        quatf xformOp:orient = (1, 0, 0, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.02, 0, -0.1596)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                        def Xform "elbow_pitch_l_link" (
+                                            instanceable = true
+                                            prepend references = @./instances.usda@</Instances/elbow_pitch_l_link>
+                                        )
+                                        {
+                                            quatd xformOp:orient = (1, 0, 0, 0)
+                                            double3 xformOp:scale = (1, 1, 1)
+                                            double3 xformOp:translate = (0, 0, 0)
+                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                        }
+
+                                        def Cylinder "Cylinder" (
+                                            prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                        )
+                                        {
+                                            uniform token axis = "Z"
+                                            float3[] extent = [(-0.035, -0.035, -0.06), (0.035, 0.035, 0.06)]
+                                            double height = 0.12
+                                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                            color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                                interpolation = "constant"
+                                            )
+                                            int[] primvars:displayColor:indices = None
+                                            float[] primvars:displayOpacity = [1] (
+                                                interpolation = "constant"
+                                            )
+                                            int[] primvars:displayOpacity:indices = None
+                                            double radius = 0.035
+                                            quatf xformOp:orient = (1, 0, 0, 0)
+                                            float3 xformOp:scale = (1, 1, 1)
+                                            double3 xformOp:translate = (-0.02, 0, -0.06)
+                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                        }
+
+                                        def Xform "elbow_yaw_l_link" (
+                                            prepend apiSchemas = ["IsaacLinkAPI"]
+                                        )
+                                        {
+                                            quatf xformOp:orient = (1, 0, 0, 0)
+                                            float3 xformOp:scale = (1, 1, 1)
+                                            double3 xformOp:translate = (-0.02, 0, -0.104)
+                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                            def Xform "elbow_yaw_l_link" (
+                                                instanceable = true
+                                                prepend references = @./instances.usda@</Instances/elbow_yaw_l_link>
+                                            )
+                                            {
+                                                quatd xformOp:orient = (1, 0, 0, 0)
+                                                double3 xformOp:scale = (1, 1, 1)
+                                                double3 xformOp:translate = (0, 0, 0)
+                                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                            }
+
+                                            def Xform "wrist_pitch_l_link" (
+                                                prepend apiSchemas = ["IsaacLinkAPI"]
+                                            )
+                                            {
+                                                quatf xformOp:orient = (1, 0, 0, 0)
+                                                float3 xformOp:scale = (1, 1, 1)
+                                                double3 xformOp:translate = (0, 0, -0.0944)
+                                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                                def Xform "wrist_pitch_l_link" (
+                                                    instanceable = true
+                                                    prepend references = @./instances.usda@</Instances/wrist_pitch_l_link>
+                                                )
+                                                {
+                                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                                    double3 xformOp:scale = (1, 1, 1)
+                                                    double3 xformOp:translate = (0, 0, 0)
+                                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                }
+
+                                                def Cylinder "wrist_pitch_l_collision_1" (
+                                                    prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                                )
+                                                {
+                                                    uniform token axis = "Z"
+                                                    float3[] extent = [(-0.035, -0.035, -0.03), (0.035, 0.035, 0.03)]
+                                                    double height = 0.06
+                                                    rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                                    color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                                        interpolation = "constant"
+                                                    )
+                                                    int[] primvars:displayColor:indices = None
+                                                    float[] primvars:displayOpacity = [1] (
+                                                        interpolation = "constant"
+                                                    )
+                                                    int[] primvars:displayOpacity:indices = None
+                                                    double radius = 0.035
+                                                    quatf xformOp:orient = (0.499998, 0.500002, -0.5, 0.5)
+                                                    float3 xformOp:scale = (1, 1, 1)
+                                                    double3 xformOp:translate = (0, 0, 0)
+                                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                }
+
+                                                def Xform "wrist_roll_l_link" (
+                                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                                )
+                                                {
+                                                    quatf xformOp:orient = (1, 0, 0, 0)
+                                                    float3 xformOp:scale = (1, 1, 1)
+                                                    double3 xformOp:translate = (0, 0, -0.062)
+                                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                                    def Xform "wrist_roll_l_link" (
+                                                        instanceable = true
+                                                        prepend references = @./instances.usda@</Instances/wrist_roll_l_link>
+                                                    )
+                                                    {
+                                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                                        double3 xformOp:scale = (1, 1, 1)
+                                                        double3 xformOp:translate = (0, 0, 0)
+                                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                    }
+
+                                                    def Xform "left_tcp_link" (
+                                                        prepend apiSchemas = ["IsaacLinkAPI"]
+                                                    )
+                                                    {
+                                                        quatf xformOp:orient = (1, 0, 0, 0)
+                                                        float3 xformOp:scale = (1, 1, 1)
+                                                        double3 xformOp:translate = (0, 0, -0.044)
+                                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                                        def Xform "left_tcp_link" (
+                                                            instanceable = true
+                                                            prepend references = @./instances.usda@</Instances/left_tcp_link>
+                                                        )
+                                                        {
+                                                            quatd xformOp:orient = (1, 0, 0, 0)
+                                                            double3 xformOp:scale = (1, 1, 1)
+                                                            double3 xformOp:translate = (0, 0, 0)
+                                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                        }
+
+                                                        def Xform "left_tcp_link_1" (
+                                                            prepend apiSchemas = ["MaterialBindingAPI"]
+                                                            displayName = "left_tcp_link"
+                                                            instanceable = true
+                                                            prepend references = @./instances.usda@</Instances/left_tcp_link_1>
+                                                            uiHints = {
+                                                                string displayName = "left_tcp_link"
+                                                            }
+                                                        )
+                                                        {
+                                                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial> (
+                                                                bindMaterialAs = "weakerThanDescendants"
+                                                            )
+                                                            quatd xformOp:orient = (1, 0, 0, 0)
+                                                            double3 xformOp:scale = (1, 1, 1)
+                                                            double3 xformOp:translate = (0, 0, 0)
+                                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        def Xform "shoulder_pitch_r_link" (
+                            prepend apiSchemas = ["IsaacLinkAPI"]
+                        )
+                        {
+                            quatf xformOp:orient = (0.99904823, -0.043619126, 0, 0)
+                            float3 xformOp:scale = (1, 1, 1)
+                            double3 xformOp:translate = (0, -0.14552, 0.18664)
+                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                            def Xform "shoulder_pitch_r_link" (
+                                instanceable = true
+                                prepend references = @./instances.usda@</Instances/shoulder_pitch_r_link>
+                            )
+                            {
+                                quatd xformOp:orient = (1, 0, 0, 0)
+                                double3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, 0, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                            }
+
+                            def Xform "shoulder_roll_r_link" (
+                                prepend apiSchemas = ["IsaacLinkAPI"]
+                            )
+                            {
+                                quatf xformOp:orient = (1, 0, 0, 0)
+                                float3 xformOp:scale = (1, 1, 1)
+                                double3 xformOp:translate = (0, -0.0678, 0)
+                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                def Xform "shoulder_roll_r_link" (
+                                    instanceable = true
+                                    prepend references = @./instances.usda@</Instances/shoulder_roll_l_link>
+                                )
+                                {
+                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                    double3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, 0)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                }
+
+                                def Xform "shoulder_yaw_r_link" (
+                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                )
+                                {
+                                    quatf xformOp:orient = (1, 0, 0, 0)
+                                    float3 xformOp:scale = (1, 1, 1)
+                                    double3 xformOp:translate = (0, 0, -0.1004)
+                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                    def Xform "shoulder_yaw_r_link" (
+                                        instanceable = true
+                                        prepend references = @./instances.usda@</Instances/shoulder_yaw_r_link>
+                                    )
+                                    {
+                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                        double3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0, 0, 0)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                    }
+
+                                    def Xform "elbow_pitch_r_link" (
+                                        prepend apiSchemas = ["IsaacLinkAPI"]
+                                    )
+                                    {
+                                        quatf xformOp:orient = (1, 0, 0, 0)
+                                        float3 xformOp:scale = (1, 1, 1)
+                                        double3 xformOp:translate = (0.02, 0, -0.1596)
+                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                        def Xform "elbow_pitch_r_link" (
+                                            instanceable = true
+                                            prepend references = @./instances.usda@</Instances/elbow_pitch_r_link>
+                                        )
+                                        {
+                                            quatd xformOp:orient = (1, 0, 0, 0)
+                                            double3 xformOp:scale = (1, 1, 1)
+                                            double3 xformOp:translate = (0, 0, 0)
+                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                        }
+
+                                        def Cylinder "Cylinder" (
+                                            prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                        )
+                                        {
+                                            uniform token axis = "Z"
+                                            float3[] extent = [(-0.035, -0.035, -0.06), (0.035, 0.035, 0.06)]
+                                            double height = 0.12
+                                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                            color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                                interpolation = "constant"
+                                            )
+                                            int[] primvars:displayColor:indices = None
+                                            float[] primvars:displayOpacity = [1] (
+                                                interpolation = "constant"
+                                            )
+                                            int[] primvars:displayOpacity:indices = None
+                                            double radius = 0.035
+                                            quatf xformOp:orient = (1, 0, 0, 0)
+                                            float3 xformOp:scale = (1, 1, 1)
+                                            double3 xformOp:translate = (-0.02, 0, -0.06)
+                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                        }
+
+                                        def Xform "elbow_yaw_r_link" (
+                                            prepend apiSchemas = ["IsaacLinkAPI"]
+                                        )
+                                        {
+                                            quatf xformOp:orient = (1, 0, 0, 0)
+                                            float3 xformOp:scale = (1, 1, 1)
+                                            double3 xformOp:translate = (-0.02, 0, -0.104)
+                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                            def Xform "elbow_yaw_r_link" (
+                                                instanceable = true
+                                                prepend references = @./instances.usda@</Instances/elbow_yaw_r_link>
+                                            )
+                                            {
+                                                quatd xformOp:orient = (1, 0, 0, 0)
+                                                double3 xformOp:scale = (1, 1, 1)
+                                                double3 xformOp:translate = (0, 0, 0)
+                                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                            }
+
+                                            def Xform "wrist_pitch_r_link" (
+                                                prepend apiSchemas = ["IsaacLinkAPI"]
+                                            )
+                                            {
+                                                quatf xformOp:orient = (1, 0, 0, 0)
+                                                float3 xformOp:scale = (1, 1, 1)
+                                                double3 xformOp:translate = (0, 0, -0.0944)
+                                                uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                                def Xform "wrist_pitch_r_link" (
+                                                    instanceable = true
+                                                    prepend references = @./instances.usda@</Instances/wrist_pitch_r_link>
+                                                )
+                                                {
+                                                    quatd xformOp:orient = (1, 0, 0, 0)
+                                                    double3 xformOp:scale = (1, 1, 1)
+                                                    double3 xformOp:translate = (0, 0, 0)
+                                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                }
+
+                                                def Cylinder "Cylinder" (
+                                                    prepend apiSchemas = ["PhysicsCollisionAPI", "MaterialBindingAPI"]
+                                                )
+                                                {
+                                                    uniform token axis = "Z"
+                                                    float3[] extent = [(-0.035, -0.035, -0.03), (0.035, 0.035, 0.03)]
+                                                    double height = 0.06
+                                                    rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial>
+                                                    color3f[] primvars:displayColor = [(0.752941, 0.752941, 0.752941)] (
+                                                        interpolation = "constant"
+                                                    )
+                                                    int[] primvars:displayColor:indices = None
+                                                    float[] primvars:displayOpacity = [1] (
+                                                        interpolation = "constant"
+                                                    )
+                                                    int[] primvars:displayOpacity:indices = None
+                                                    double radius = 0.035
+                                                    quatf xformOp:orient = (0.499998, 0.500002, -0.5, 0.5)
+                                                    float3 xformOp:scale = (1, 1, 1)
+                                                    double3 xformOp:translate = (0, 0, 0)
+                                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                }
+
+                                                def Xform "wrist_roll_r_link" (
+                                                    prepend apiSchemas = ["IsaacLinkAPI"]
+                                                )
+                                                {
+                                                    quatf xformOp:orient = (1, 0, 0, 0)
+                                                    float3 xformOp:scale = (1, 1, 1)
+                                                    double3 xformOp:translate = (0, 0, -0.062)
+                                                    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                                    def Xform "wrist_roll_r_link" (
+                                                        instanceable = true
+                                                        prepend references = @./instances.usda@</Instances/wrist_roll_r_link>
+                                                    )
+                                                    {
+                                                        quatd xformOp:orient = (1, 0, 0, 0)
+                                                        double3 xformOp:scale = (1, 1, 1)
+                                                        double3 xformOp:translate = (0, 0, 0)
+                                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                    }
+
+                                                    def Xform "right_tcp_link" (
+                                                        prepend apiSchemas = ["IsaacLinkAPI"]
+                                                    )
+                                                    {
+                                                        quatf xformOp:orient = (1, 0, 0, 0)
+                                                        float3 xformOp:scale = (1, 1, 1)
+                                                        double3 xformOp:translate = (0, 0, -0.044)
+                                                        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+
+                                                        def Xform "right_tcp_link" (
+                                                            instanceable = true
+                                                            prepend references = @./instances.usda@</Instances/right_tcp_link>
+                                                        )
+                                                        {
+                                                            quatd xformOp:orient = (1, 0, 0, 0)
+                                                            double3 xformOp:scale = (1, 1, 1)
+                                                            double3 xformOp:translate = (0, 0, 0)
+                                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                        }
+
+                                                        def Xform "right_tcp_link_1" (
+                                                            prepend apiSchemas = ["MaterialBindingAPI"]
+                                                            displayName = "right_tcp_link"
+                                                            instanceable = true
+                                                            prepend references = @./instances.usda@</Instances/right_tcp_link_1>
+                                                            uiHints = {
+                                                                string displayName = "right_tcp_link"
+                                                            }
+                                                        )
+                                                        {
+                                                            rel material:binding:physics = </tiangong3/Physics/PhysicsMaterial> (
+                                                                bindMaterialAs = "weakerThanDescendants"
+                                                            )
+                                                            quatd xformOp:orient = (1, 0, 0, 0)
+                                                            double3 xformOp:scale = (1, 1, 1)
+                                                            double3 xformOp:translate = (0, 0, 0)
+                                                            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:orient", "xformOp:scale"]
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def Scope "Physics"
+    {
+        def Material "PhysicsMaterial"
+        {
+        }
+    }
+}
+

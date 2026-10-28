@@ -1,3 +1,5 @@
+> 本分支部署入口已统一为 Conda：`sm.sh` = `sm_native.sh`。先阅读 [DEPLOY_CONDA.md](DEPLOY_CONDA.md)。旧 Docker 入口为 `sm_docker.sh`，下文历史 Docker 描述不适用于默认入口。
+
 # How to use（h800 分支）
 
 所有命令都在仓库根目录执行。

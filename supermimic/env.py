@@ -8,6 +8,7 @@ reference-motion states drawn by return-based bin sampling (paper Appendix D.1).
 from __future__ import annotations
 
 import math
+import os
 import re
 
 import torch
@@ -33,7 +34,7 @@ SIM_STATE_BOUND = 1e3  # |entries| of a sane state (positions in m, velocities i
 
 @configclass
 class TrackingSceneCfg(InteractiveSceneCfg):
-    ground = AssetBaseCfg(prim_path="/World/ground", spawn=sim_utils.GroundPlaneCfg())
+    ground = AssetBaseCfg(prim_path="/World/ground", spawn=sim_utils.GroundPlaneCfg(usd_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "ground", "default_ground_plane.usda")))
     robot = replace(G1_CFG, prim_path="{ENV_REGEX_NS}/Robot")
 
 
