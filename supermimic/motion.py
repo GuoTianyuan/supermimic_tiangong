@@ -100,7 +100,15 @@ class MotionLib:
                 e = min(s + 65536, self.num_frames)
                 out = kin.forward(self.root_p[s:e], self.root_R[s:e], self.root_v[s:e], self.root_w[s:e], self.q[s:e], self.qd[s:e])
                 bp.append(out[0]), bR.append(out[1]), bv.append(out[2]), bw.append(out[3])
-            self.body_p, self.body_R, self.body_v, self.body_w = torch.cat(bp), torch.cat(bR), torch.cat(bv), torch.cat(bw)
+            # Keep identical concatenated tensors; release each temporary chunk list immediately.
+            self.body_p = torch.cat(bp)
+            bp.clear()
+            self.body_R = torch.cat(bR)
+            bR.clear()
+            self.body_v = torch.cat(bv)
+            bv.clear()
+            self.body_w = torch.cat(bw)
+            bw.clear()
         # per-frame static goal parts: q, qd, root velocities in the root frame
         Rt = self.root_R.transpose(-1, -2)
         self.root_v_local = (Rt @ self.root_v.unsqueeze(-1)).squeeze(-1)
