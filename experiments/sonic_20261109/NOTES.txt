@@ -11,11 +11,12 @@ temporary chunk lists sooner; stored tensor values and the original algorithm re
    same memory-peak patch; the launcher explicitly selects pd,push,mass,armature,joint_friction,contact.
    This disables only delay DR. The extended xi and previous-action inputs are retained, with nominal
    zero delay encoded as -1. Physics still has four 5 ms internal substeps per control step.
-3. control-100hz-compact: from the 100 Hz branch, GPU4, 4096 each. Cache the exact same root/joint
-   trajectories on GPU, and query the existing FK for requested reference body frames instead of
-   retaining four dense whole-dataset body tables. No CPU transfer in reward/critic, no precision
-   reduction, no interpolation, sampling, goal, reward, network or optimizer change. Test against
-   the dense implementation for state tables, goals, reward, critic inputs and gradients.
+3. control-100hz-compact: from the 100 Hz branch, GPU4, 4096 each. Keep root/joint trajectories on
+   GPU. Precompute body references with exactly the original 65536-frame FK batches and retain
+   their unchanged float32 values in CPU memory. Pin only the transfer batches before compiled
+   reward/critic calls (critic only needs positions). There is no query-time FK, precision reduction,
+   or change to interpolation, sampling, goal, reward, networks or optimizer. Compare reference
+   bits and reward/critic gradients on shared inputs, including TF32 and H32 x4096 batches.
 
 Shared: original friend's URDF/PD/action scales, reward dexevt (action-rate -0.1, joint acceleration
 -2e-6), original observation/WM/critic normalization, analytic sigmoid imagined termination;
@@ -47,3 +48,8 @@ capture TensorBoard PID in the EXIT trap before its local variable leaves scope 
 These do not modify training source, data, losses or optimizer settings.
 Original per-step/imagined-return logging divides by0.1; at100Hz its positive maximum is0.5.
 Use ep_ret_norm (which uses MAX_STEP_REWARD) for frequency comparisons, plus physical errors.
+
+Storage implementation review: an initial query-time FK trial matched FP32 tests but differed by
+about0.7mm with actual TF32 settings because the batch shape selected different kernels. It was
+stopped during dataset initialization, before any formal learning. The accepted CPU-table version
+preserves the original precomputed target bits instead. Initial trial reports are superseded.
