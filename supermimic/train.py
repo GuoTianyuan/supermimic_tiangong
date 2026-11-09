@@ -62,6 +62,12 @@ parser.add_argument("--detach_a_prev", action="store_true",
                     help="in imagination, no policy gradient through the previous action that the policy observes")
 parser.add_argument("--reset_temp", type=float, default=25.0,
                     help="inverse temperature of the return-based reset sampling (paper: 25)")
+parser.add_argument("--motion_active_ratio", type=float, default=1.0,
+                    help="resident active fraction; <1 enables the rotating NPZ pool (no byte cap)")
+parser.add_argument("--motion_refresh_iters", type=int, default=1500)
+parser.add_argument("--motion_replace_ratio", type=float, default=.25,
+                    help="fraction of the full catalog replaced at each refresh, as in WBT")
+parser.add_argument("--motion_stats_cache", default=os.path.join(REPO, ".cache", "motion_pool"))
 parser.add_argument("--motion_exclude", type=str, default="", help="regex; motion files whose name matches are not loaded")
 parser.add_argument("--warmup_steps", type=int, default=64, help="sim steps before any update")
 parser.add_argument("--wm_only_iters", type=int, default=500, help="world-model-only iterations at the start")
@@ -114,6 +120,8 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 from supermimic.buffer import ReplayBuffer
+from supermimic.diagnostics import EXTRA_FIELDS, POOL_FIELDS, REWARD_KEYS, RealMetrics
+from supermimic.motion_pool import MotionPool
 from supermimic.dr import LATE_TERMS, DRCfg, curriculum_scale, describe, describe_scale, parse_curriculum, parse_terms
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
@@ -162,7 +170,19 @@ if MAIN:
 
 kin = G1Kinematics(dev)
 t_load = time.time()
-motion = MotionLib.from_dir(args.motion_dir, kin, dev, RANK, WORLD, exclude=args.motion_exclude)
+pool_states = ck.get("motion_pool") if ck else None
+if not 0 < args.motion_active_ratio <= 1 or args.motion_refresh_iters < 0 or not 0 <= args.motion_replace_ratio <= 1:
+    raise ValueError("Invalid active ratio / motion refresh interval / replacement ratio")
+if pool_states and args.motion_active_ratio == 1:
+    raise ValueError("Resume a pooled run with its original motion_active_ratio")
+if args.motion_active_ratio < 1:
+    motion = MotionPool.from_dir(args.motion_dir, kin, dev, RANK, WORLD, exclude=args.motion_exclude,
+        active_ratio=args.motion_active_ratio, replace_ratio=args.motion_replace_ratio, seed=args.seed+RANK,
+        stats_cache=args.motion_stats_cache, state=pool_states[RANK] if pool_states else None)
+    if int(motion.clip_len.max()) <= args.horizon:
+        raise ValueError("The active subset has no clip long enough for imagination; increase active ratio")
+else:
+    motion = MotionLib.from_dir(args.motion_dir, kin, dev, RANK, WORLD, exclude=args.motion_exclude)
 print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frames} frames, "
       f"loaded in {time.time() - t_load:.0f} s", flush=True)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
@@ -219,8 +239,11 @@ def widen_xi(ck: dict, old_xi: int, n: int):
 
 def reference_action_stats() -> tuple[torch.Tensor, torch.Tensor]:
     """Per-joint mean / std of the actions that hold the reference joint positions, over every rank's motions."""
-    var, mean = (x.double() for x in torch.var_mean(motion.q, dim=0, correction=0))
-    n = float(motion.num_frames)
+    if isinstance(motion, MotionPool):
+        var, mean, n = motion.reference_joint_stats()
+    else:
+        var, mean = (x.double() for x in torch.var_mean(motion.q, dim=0, correction=0))
+        n = float(motion.num_frames)
     if WORLD > 1:
         s = torch.cat((mean.new_tensor([n]), mean * n, (var + mean**2) * n))
         dist.all_reduce(s)
@@ -271,11 +294,13 @@ if WORLD > 1:
     for t in (*wm.state_dict().values(), *pi.state_dict().values(), *critic.state_dict().values()):
         dist.broadcast(t, 0)
     torch.manual_seed(args.seed + RANK)  # different envs, noise and minibatches on every rank
-    shard = torch.tensor([len(motion.names), motion.num_frames], device=dev)
+    shard = torch.tensor([getattr(motion, "catalog_num_clips", len(motion.names)),
+                          getattr(motion, "catalog_num_frames", motion.num_frames)], device=dev)
     dist.all_reduce(shard)
     num_clips, num_frames = shard.tolist()
 else:
-    num_clips, num_frames = len(motion.names), motion.num_frames
+    num_clips = getattr(motion, "catalog_num_clips", len(motion.names))
+    num_frames = getattr(motion, "catalog_num_frames", motion.num_frames)
 critic_targ = copy.deepcopy(critic).requires_grad_(False)
 critic_targ.norm = critic.norm
 if ck is not None and "critic_targ" in ck:
@@ -331,7 +356,7 @@ def _wm_err(S_hat, s1, mask):
     std = torch.maximum(wm.out_norm.std(), ERR_FLOOR)
     e = (wm.state_error(S_hat, unflatten_state(s1)) / std) ** 2  # (B, k, D)
     e = e.mean(-1)
-    return (e * mask).sum() / s1.shape[0], e[:, -1]
+    return (e * mask).sum() / s1.shape[0], e[:, -1], e[:, 0]
 
 
 def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
@@ -373,13 +398,13 @@ def set_requires_grad(m: nn.Module, flag: bool):
 CSV_FIELDS = ["iteration", "wall_h", "sim_steps", "wm_loss", "wm_err8", "pi_loss", "v_loss", "imag_rew", "pi_gradnorm",
               "imag_survival", "sim_rew", "ep_len", "ep_ret_norm", "term_frac", "it_per_s", "lr",
               "v_end_mean", "v_end_max", "v_end_over", "pi_gradnorm_max", "a_gain_med", "a_gain_max", "dr_scale", "sim_nonfinite",
-              "smooth_pen_frac", "joint_acc"]  # fmt: skip
+              "smooth_pen_frac", "joint_acc", *EXTRA_FIELDS]  # fmt: skip
 SMOOTH_KEYS = ("pen_smooth", "track", "joint_acc")
 # TensorBoard sorts groups by name, so the numeric prefixes put the tracking metrics first.
 TB_TAGS = {
     "sim_rew": "1_tracking/sim_reward_per_step",
     "term_frac": "1_tracking/fall_rate_of_finished_episodes",
-    "ep_len": "1_tracking/episode_length_steps_50_per_s",
+    "ep_len": "1_tracking/episode_length_steps",
     "ep_ret_norm": "1_tracking/finished_episode_return_normalized_biased",
     "wm_loss": "2_world_model/loss_per_step",
     "wm_err8": "2_world_model/error_after_8_steps",
@@ -404,6 +429,13 @@ TB_TAGS = {
     "lr": "6_optimizer/learning_rate",
 }
 
+for key in EXTRA_FIELDS:
+    group = ("7_motion_pool" if key.startswith("pool_") else
+             "8_reward_terms" if key in REWARD_KEYS or key == "track_fraction" else
+             "9_tracking_errors" if key.startswith("error_") else "1_tracking")
+    TB_TAGS[key] = f"{group}/{key}"
+TB_TAGS["wm_nse1"] = "2_world_model/error_after_1_step"
+
 
 def _hms(seconds: float) -> str:
     s = int(max(seconds, 0))
@@ -420,7 +452,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
     policy = r["iteration"] > args.wm_only_iters
     title = f"Learning iteration {r['iteration']}/{args.iterations}  ({'world model + policy' if policy else 'world-model warm-up'})"
     free, total = torch.cuda.mem_get_info()
-    lines = [("World model loss / 8-step error", f"{r['wm_loss']:.4f} / {r['wm_err8']:.4f}")]
+    lines = [("WM loss / NSE1 / NSE8", f"{r['wm_loss']:.4f} / {r['wm_nse1']:.4f} / {r['wm_err8']:.4f}")]
     if policy:
         lines += [("Policy loss / grad norm (max)", f"{r['pi_loss']:.3f} / {r['pi_gradnorm']:.3f} ({r['pi_gradnorm_max']:.3f})"),
                   ("Critic loss", f"{r['v_loss']:.4f}"),
@@ -439,9 +471,28 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
     if n_done:
         lines += [("Mean episode length", f"{r['ep_len']:.1f} steps ({r['ep_len'] * CONTROL_DT:.1f} s)"),
                   ("Mean episode return (normalized)", f"{r['ep_ret_norm']:.3f}"),
-                  ("Terminated (fell) episodes", f"{100 * r['term_frac']:.0f}% of {n_done:.0f} finished")]  # fmt: skip
+                  ("Terminated (fell) episodes", f"{100 * r['term_frac']:.2f}% ({r['episodes_failed']:.0f}/{n_done:.0f})"),
+                  ("Recent success (no failure)", f"{100 * r['success_frac']:.2f}% | clip end {r['ended_clip']:.0f}, time limit {r['ended_time']:.0f}")]  # fmt: skip
     else:
         lines.append(("Episodes", "none finished in this window"))
+    lines += [
+        ("Tracking reward / maximum", f"{100*r['track_fraction']:.1f}% | net {r['sim_reward_normalized']:.3f}"),
+        ("Reward body p/R/v/w (% max)", " / ".join(f"{100*r[k]/CONTROL_DT:.1f}" for k in REWARD_KEYS[:4])),
+        ("Reward root p/R (% max)", " / ".join(f"{100*r[k]/(.5*CONTROL_DT):.1f}" for k in REWARD_KEYS[4:6])),
+        ("Penalty rate/acc/limit (step)", " / ".join(f"{r[k]:.4g}" for k in REWARD_KEYS[6:])),
+        ("Root RMSE XY / Z / ori", f"{r['error_root_xy_m']:.3f} m / {r['error_root_z_m']:.3f} m / {r['error_root_ori_rad']:.3f} rad"),
+        ("Body RMSE pos / ori", f"{r['error_body_pos_m']:.3f} m / {r['error_body_ori_rad']:.3f} rad"),
+        ("Body RMSE lin / ang vel", f"{r['error_body_linvel_mps']:.3f} m/s / {r['error_body_angvel_radps']:.3f} rad/s"),
+        ("Joint RMSE pos / vel", f"{r['error_joint_pos_rad']:.3f} rad / {r['error_joint_vel_radps']:.3f} rad/s"),
+        ("Action delta / joint accel RMS", f"{r['action_delta_rms']:.3f} / {r['joint_acc_rms']:.2f} rad/s2"),
+    ]
+    if isinstance(motion, MotionPool):
+        lines += [
+            ("Motion active / legacy / resident", f"{r['pool_active']:.0f} / {r['pool_legacy']:.0f} / {r['pool_resident']:.0f}"),
+            ("Resident frames / reference memory", f"{r['pool_frames']:,.0f} | GPU {r['pool_gpu_gib']:.2f}, CPU {r['pool_cpu_gib']:.2f} GiB"),
+            ("Last refresh / new files", f"{r['pool_refresh_s']:.2f}s / {r['pool_loaded']:.0f}"),
+            ("Motion starts seen / catalog", f"{r['pool_starts_seen']:.0f}/{r['pool_catalog']:.0f} | {r['pool_starts_drawn']:,.0f} draws; not full-motion coverage"),
+        ]
     footer = [("Sim steps", f"{r['sim_steps']:,}"),
               ("Speed", f"{r['it_per_s']:.2f} it/s, {steps_per_s:,.0f} sim steps/s"),
               ("Learning rate", f"{r['lr']:.2e}"),
@@ -459,14 +510,14 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
 def wm_update():
     w = buffer.sample_windows(args.wm_batch, args.wm_window)
     S_hat = wm_rollout(w["s"], w["a"], w["a_prev"], w["xi"])
-    loss, e_last = wm_err(S_hat, w["s1"], w["mask"])
+    loss, e_last, e_first = wm_err(S_hat, w["s1"], w["mask"])
     opt_wm.zero_grad(set_to_none=True)
     loss.backward()
     sync_grads(wm)
     clip_finite_grads(wm, 1.0)
     opt_wm.step()
     m = w["mask"][:, -1]
-    return loss.detach() / args.wm_window, (e_last.detach() * m).sum() / m.sum().clamp(min=1)
+    return loss.detach() / args.wm_window, (e_last.detach() * m).sum() / m.sum().clamp(min=1), e_first.detach().mean()
 
 
 def sample_valid_starts(B: int):
@@ -603,7 +654,11 @@ with launch_simulation(sim_cfg, args):
     dr_scale = curriculum_scale(dr.terms, dr_curriculum, args.dr_ramp, start_it)
     env = TrackingSim(sim_cfg, args.num_envs, motion, mdp, gamma=args.gamma, dr=dr, dr_scale=dr_scale,
                       reset_a_prev=args.reset_a_prev, reset_temp=args.reset_temp)
+    if isinstance(motion, MotionPool):
+        env.bin_G = motion.bin_returns[motion.bin_global.cpu()].to(dev)
+        env.bin_w_avg = motion.bin_weights[motion.bin_global.cpu()].to(dev)
     buffer = ReplayBuffer(args.buffer_steps, args.num_envs, dev, xi_dim=dr.xi_dim)
+    real_metrics = RealMetrics(dev)
     obs_hist = torch.zeros(args.num_envs, Hh, OBS_DIM, device=dev)
 
     @torch.no_grad()
@@ -621,6 +676,7 @@ with launch_simulation(sim_cfg, args):
             a = torch.clamp(a + args.action_noise * torch.randn_like(a), -ACTION_CLIP, ACTION_CLIP)
             out = env.step(a)
             buffer.add(out)
+            real_metrics.update(out)
             S0, S1 = unflatten_state(out["s"]), unflatten_state(out["s1"])
             wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"]), out["a_prev"]))
             wm.out_norm.update(wm.targets(S0, S1))
@@ -629,23 +685,38 @@ with launch_simulation(sim_cfg, args):
             for k in SMOOTH_KEYS:
                 stats[k].append(out["terms"][k].mean())
             if "ep_len" in out:
-                stats["ep_len"].append(out["ep_len"].mean())
-                stats["ep_ret"].append(out["ep_ret_norm"].mean())
+                stats["ep_len"].append(out["ep_len"].sum())
+                stats["ep_ret"].append(out["ep_ret_norm"].sum())
+                stats["ep_count"].append(out["ep_len"].numel())
+                stats["end_clip"].append(out["end_clip"].sum())
+                stats["end_time"].append(out["end_time"].sum())
                 stats["term"].append(out["term"].float().sum())
                 stats["done"].append(out["done"].float().sum())
 
     def save_checkpoint(n_it: int) -> str:
         path = os.path.join(args.log_dir, f"ckpt_{n_it:06d}.pt")
+        pool_states = None
+        if isinstance(motion, MotionPool):
+            state = motion.state_dict(env)
+            if WORLD > 1:
+                pool_states = [None] * WORLD if MAIN else None
+                dist.gather_object(state, pool_states, dst=0)
+            else:
+                pool_states = [state]
         if not MAIN:
             return path
         ck = {"wm": wm.state_dict(), "pi": pi.state_dict(), "critic": critic.state_dict(), "critic_targ": critic_targ.state_dict(),
               "opt_wm": opt_wm.state_dict(), "opt_pi": opt_pi.state_dict(), "opt_v": opt_v.state_dict(), "iteration": n_it,
               "wall_time": time.time() - t_start, "sim_steps": sim_steps, "args": vars(args),
               "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
+        if pool_states is not None:
+            ck["motion_pool"] = pool_states
         last = os.path.join(args.log_dir, "last.pt")
         torch.save(ck, last + ".tmp")
         os.replace(last + ".tmp", last)
         small = {k: ck[k] for k in ("pi", "wm", "iteration", "wall_time", "sim_steps", "args", "saved_at")}
+        if pool_states is not None:
+            small["motion_pool"] = pool_states
         torch.save(small, path + ".tmp")
         os.replace(path + ".tmp", path)
         print(f"Saved checkpoint {path} (and last.pt)", flush=True)
@@ -676,7 +747,7 @@ with launch_simulation(sim_cfg, args):
         print(" Ctrl+C: stop after the current iteration and save a checkpoint")
         print("=" * 80, flush=True)
 
-    stats = {"r": [], "ep_len": [], "ep_ret": [], "term": [], "done": [], **{k: [] for k in SMOOTH_KEYS}}
+    stats = {"r": [], "ep_len": [], "ep_ret": [], "ep_count": [], "end_clip": [], "end_time": [], "term": [], "done": [], **{k: [] for k in SMOOTH_KEYS}}
     nonfinite_logged = 0
     # The replay buffer is not checkpointed, so a resumed run refills it before sampling world-model windows.
     if MAIN:
@@ -704,7 +775,7 @@ with launch_simulation(sim_cfg, args):
     t_session = t_log = time.time()
     steps_log = sim_steps
     step_acc = 0.0
-    agg = {"wm": [], "wm8": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": [], "vm": [], "vx": [], "vo": []}
+    agg = {"wm": [], "wm8": [], "wm1": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": [], "vm": [], "vx": [], "vo": []}
     done_it = saved_it = start_it
     last_ckpt = "none yet"
     for it in range(start_it, args.iterations):
@@ -732,10 +803,10 @@ with launch_simulation(sim_cfg, args):
         if prof:
             torch.cuda.synchronize(); tp1 = time.time()
         for _ in range(args.wm_batches):
-            l, e8 = wm_update()
+            l, e8, e1 = wm_update()
         if prof:
             torch.cuda.synchronize(); tp2 = time.time()
-        agg["wm"].append(l), agg["wm8"].append(e8)
+        agg["wm"].append(l), agg["wm8"].append(e8), agg["wm1"].append(e1)
         if it >= args.wm_only_iters:
             pl, vl, ir, gn, surv, vm, vx, vo = policy_update()
             if prof:
@@ -744,6 +815,11 @@ with launch_simulation(sim_cfg, args):
             agg["pi"].append(pl), agg["v"].append(vl), agg["ir"].append(ir), agg["gn"].append(gn), agg["surv"].append(surv)
             agg["vm"].append(vm), agg["vx"].append(vx), agg["vo"].append(vo)
         done_it = it + 1
+        if isinstance(motion, MotionPool) and args.motion_refresh_iters and done_it % args.motion_refresh_iters == 0:
+            motion.refresh(env, buffer)
+            if int(motion.clip_len.max()) <= HZ:
+                raise ValueError("No resident clip can supply the imagination horizon")
+            print(f"[rank {RANK}] motion pool refreshed: {motion.metrics()}", flush=True)
         if it == start_it and MAIN:
             print(f"First iteration done after {time.time() - t_session:.0f} s; progress is printed every {args.log_every} iterations.", flush=True)
         if done_it % args.log_every == 0:
@@ -759,8 +835,8 @@ with launch_simulation(sim_cfg, args):
             gain = a_prev_gain() if it >= args.wm_only_iters else torch.zeros(1, device=dev)
             vals += [mean(agg["vm"]), mean(agg["vo"]), float(gain.median())] + [mean(stats[k]) for k in SMOOTH_KEYS]
             maxes = [top(agg["vx"]), top(agg["gn"]), float(gain.max())]
-            pooled = [total(stats["ep_len"]), total(stats["ep_ret"]), float(len(stats["ep_len"])), total(stats["term"]), total(stats["done"]),
-                      float(env.n_nonfinite - nonfinite_logged)]  # fmt: skip
+            pooled = [total(stats["ep_len"]), total(stats["ep_ret"]), total(stats["ep_count"]), total(stats["term"]), total(stats["done"]),
+                      float(env.n_nonfinite - nonfinite_logged), total(stats["end_clip"]), total(stats["end_time"])]  # fmt: skip
             nonfinite_logged = env.n_nonfinite
             if WORLD > 1:
                 t = torch.tensor(vals + pooled, dtype=torch.float64, device=dev)
@@ -769,12 +845,30 @@ with launch_simulation(sim_cfg, args):
                 t = torch.tensor(maxes, dtype=torch.float64, device=dev)
                 dist.all_reduce(t, op=dist.ReduceOp.MAX)
                 maxes = t.tolist()
-            ep_len_sum, ep_ret_sum, n_ep, n_term, n_done, n_nonfinite = pooled
+            ep_len_sum, ep_ret_sum, n_ep, n_term, n_done, n_nonfinite, n_clip, n_time = pooled
             (v_end_mean, v_end_over, gain_med), (v_end_max, gn_max, gain_max) = vals[8:11], maxes
             dr_mean = sum(dr_scale.values()) / max(len(dr_scale), 1)
             row = [done_it, (now - t_start) / 3600, sim_steps, *vals[:8], ep_len_sum / max(n_ep, 1), ep_ret_sum / max(n_ep, 1),
                    n_term / max(n_done, 1), ips, lr, v_end_mean, v_end_max, v_end_over, gn_max, gain_med, gain_max, dr_mean,
                    int(n_nonfinite), -vals[11] / max(vals[12], 1e-9), vals[13]]  # fmt: skip
+            extra = real_metrics.flush()
+            pool_metrics = motion.metrics() if isinstance(motion, MotionPool) else {k: 0.0 for k in POOL_FIELDS}
+            if WORLD > 1 and isinstance(motion, MotionPool):
+                pm = torch.tensor([pool_metrics[k] for k in POOL_FIELDS], device=dev, dtype=torch.float64)
+                dist.all_reduce(pm)
+                pool_metrics = dict(zip(POOL_FIELDS, pm.tolist()))
+                # Memory/counts are global sums; refresh latency is mean per rank.
+                pool_metrics["pool_refresh_s"] /= WORLD
+                pool_metrics["pool_refreshes"] /= WORLD
+            extra.update(pool_metrics)
+            extra.update(wm_nse1=mean(agg["wm1"]), success_frac=1-n_term/n_done if n_done else 0.0,
+                         episodes_ended=n_done, episodes_failed=n_term, ended_clip=n_clip, ended_time=n_time,
+                         imag_reward_normalized=vals[4]*.1/MAX_STEP_REWARD)
+            if WORLD > 1:
+                e1 = torch.tensor(extra["wm_nse1"], device=dev)
+                dist.all_reduce(e1, op=dist.ReduceOp.AVG)
+                extra["wm_nse1"] = float(e1)
+            row += [extra[k] for k in EXTRA_FIELDS]
             if MAIN:
                 log_f.write(",".join(f"{x:.6g}" if isinstance(x, float) else str(x) for x in row) + "\n")
                 log_f.flush()

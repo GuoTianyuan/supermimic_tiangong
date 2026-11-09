@@ -40,6 +40,14 @@ class ReplayBuffer:
         """Map age-ordered time index (0 = oldest) to the storage row."""
         return (self.ptr - self.size + age) % self.T
 
+    def reference_frames(self) -> torch.Tensor:
+        """A writable view of every valid reference index, including circular-buffer history.
+
+        Before the first wrap rows [0,size) are valid; afterwards every row is valid.
+        Used only between updates when the motion pool remaps resident offsets.
+        """
+        return self.data["f"][:self.size]
+
     def sample_windows(self, B: int, k: int):
         """k-step windows; returns dict of (B, k, ...) tensors and a validity mask (B, k)."""
         t0 = torch.randint(0, self.size - k + 1, (B,), device=self.device)

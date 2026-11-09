@@ -294,10 +294,19 @@ class TrackingSim:
     # ------------------------------------------------------------------ reset
     def sample_frames(self, n: int) -> tuple[torch.Tensor, torch.Tensor]:
         m = self.motion
-        soft = torch.softmax(-self.reset_temp * self.bin_G / self.G_max, 0)
-        self.bin_w_avg.mul_(0.999).add_(0.001 * soft)
-        probs = 0.5 / m.num_bins + 0.4 * soft + 0.1 * self.bin_w_avg / self.bin_w_avg.sum()
-        bins = torch.multinomial(probs, n, replacement=True)
+        if hasattr(m, "active_bins"):
+            eligible = m.active_bins
+            soft = torch.softmax(-self.reset_temp * self.bin_G[eligible] / self.G_max, 0)
+            avg = self.bin_w_avg[eligible].mul(0.999).add(0.001 * soft)
+            self.bin_w_avg[eligible] = avg
+            probs = 0.5 / len(eligible) + 0.4 * soft + 0.1 * avg / avg.sum()
+            bins = eligible[torch.multinomial(probs, n, replacement=True)]
+            m.record_starts(bins)
+        else:
+            soft = torch.softmax(-self.reset_temp * self.bin_G / self.G_max, 0)
+            self.bin_w_avg.mul_(0.999).add_(0.001 * soft)
+            probs = 0.5 / m.num_bins + 0.4 * soft + 0.1 * self.bin_w_avg / self.bin_w_avg.sum()
+            bins = torch.multinomial(probs, n, replacement=True)
         start = m.bin_start[bins]
         end = torch.minimum(start + BIN_FRAMES, m.clip_end[m.bin_clip[bins]])  # keep >= 1 step before the clip end
         f = start + (torch.rand(n, device=self.device) * (end - start).float()).long()
@@ -399,6 +408,8 @@ class TrackingSim:
         out = {
             "s": s, "a": a.clone(), "a_prev": a_prev, "f": f, "s1": s1, "r": r,
             "term": term, "done": done, "cut": cut | bad, "ep_step": ep_step, "xi": xi, "terms": terms,
+            "end_clip": (f1 >= clip_end) & ~term,
+            "end_time": (ep_step + 1 >= self.max_episode_steps) & (f1 < clip_end) & ~term,
         }  # fmt: skip
         # bookkeeping
         self.ep_disc_ret += (self.gamma ** ep_step.float()) * r
