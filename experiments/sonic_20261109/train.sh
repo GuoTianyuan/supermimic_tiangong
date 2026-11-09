@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 RUN=${1:-tg_sonic_100hz_s0_20261109}
 GPUS=${2:-1,2}
+mkdir -p "logs/$RUN"
 exec bash sm_native.sh _train "$RUN" --gpu "$GPUS" --robot tiangong3 --no_tb \
  --motion_dir /media/supermimic/data/sonic_validated \
  --num_envs 2048 --iterations 320000 --buffer_steps 1000 --utd 0.4 --horizon 32 \
