@@ -24,6 +24,7 @@ from supermimic.mdp import MDP, MAX_STEP_REWARD, flatten_state, reward_cfg
 from supermimic.motion import MotionLib
 from supermimic.motion_pool import MotionPool
 from supermimic.robot import JOINT_NAMES, default_joint_pos_list
+from supermimic.env import TrackingSim
 
 
 def main():
@@ -58,6 +59,17 @@ def main():
         full = MotionPool(files, kin, dev, active_ratio=1, stats_cache=str(Path(tmp)/"stats"))
         for k in MotionPool.FRAME_FIELDS:
             assert torch.equal(getattr(full, k), getattr(dense, k)), k
+        # At ratio1 the pool must reproduce the original adaptive-bin reset sampler exactly.
+        def sampler(m):
+            return SimpleNamespace(motion=m, bin_G=torch.arange(m.num_bins,device=dev)*.001,
+                bin_w_avg=torch.ones(m.num_bins,device=dev)/m.num_bins,G_max=5.,reset_temp=25.,device=dev)
+        d_sampler, p_sampler = sampler(dense), sampler(full)
+        torch.manual_seed(112)
+        f0,b0=TrackingSim.sample_frames(d_sampler,1000)
+        torch.manual_seed(112)
+        f1,b1=TrackingSim.sample_frames(p_sampler,1000)
+        assert torch.equal(f0,f1) and torch.equal(b0,b1)
+        assert torch.equal(d_sampler.bin_w_avg,p_sampler.bin_w_avg)
         var, mean, count = full.reference_joint_stats()
         v0, m0 = torch.var_mean(dense.q, dim=0, correction=0)
         torch.testing.assert_close(mean, m0.double(), atol=2e-7, rtol=2e-6)
@@ -73,6 +85,7 @@ def main():
             bin_G=torch.arange(pool.num_bins, dtype=torch.float32, device=dev),
             bin_w_avg=torch.arange(1,pool.num_bins+1,dtype=torch.float32,device=dev))
         replay = ReplayBuffer(5, 2, dev, xi_dim=181)
+        assert replay.reference_frames().numel() == 0
         for t in range(8):
             tr = {k: torch.zeros_like(v[0]) for k, v in replay.data.items()}
             tr["f"] = f+t
@@ -80,6 +93,7 @@ def main():
             tr["a_prev"].fill_(t*.01)
             tr["ep_step"].fill_(t)
             replay.add(tr)
+            assert replay.reference_frames().shape == (min(t+1,5),2)
         assert replay.ptr == 3 and replay.size == 5
         old_ids = set(pool.resident_ids)
         mdp = MDP(kin, pool, q0, reward_cfg("dexevt"))
@@ -123,6 +137,9 @@ def main():
         assert old_ids-set(pool.active_ids) and set(before_id[0].cpu().tolist()) <= set(pool.resident_ids)
         # The sampler only receives active bins, including after a full active-set replacement.
         assert set(pool.resident_global[pool.bin_clip[pool.active_bins]].cpu().tolist()) == set(pool.active_ids)
+        f_draw,b_draw=TrackingSim.sample_frames(SimpleNamespace(motion=pool,bin_G=env.bin_G,
+            bin_w_avg=env.bin_w_avg,G_max=5.,reset_temp=25.,device=dev),1000)
+        assert set(identity(f_draw)[0].cpu().tolist()) <= set(pool.active_ids)
         # Load the original reward from this branch's parent: diagnostics must not change values/gradients.
         original = Path(tmp)/"mdp_before.py"
         original.write_bytes(subprocess.check_output(["git","-C",str(Path(__file__).resolve().parents[1]),
@@ -183,6 +200,7 @@ def main():
         report=dict(device=dev, circular_replay_rows=5, refreshes=pool.refresh_count,
             root_joint_and_cached_body_references_bitwise_equal=True, goals_rewards_critic_gradients_bitwise_equal=True,
             diagnostics_preserve_original_reward_and_gradients=True, full_catalog_action_stats_match=True,
+            original_adaptive_sampler_preserved=True, only_active_clips_receive_starts=True,
             releases_unreferenced_legacy=True, checkpoint_pool_state_restored=True,
             compiled_refresh_calls=compiled_calls, metrics=metrics, pool=pool.metrics())
         Path(a.output).write_text(json.dumps(report,indent=2))

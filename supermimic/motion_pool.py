@@ -18,6 +18,7 @@ import numpy as np
 import torch
 
 from .motion import BIN_FRAMES, CONTROL_DT, MotionLib, _load_npz
+from .robot import JOINT_NAMES, ROBOT_NAME
 
 
 class MotionPool(MotionLib):
@@ -34,17 +35,18 @@ class MotionPool(MotionLib):
         self.active_ratio, self.replace_ratio = active_ratio, replace_ratio
         self.rng = np.random.default_rng(seed)
         self.catalog_names = [Path(f).stem for f in files]
-        headers, lengths, fingerprint = [], [], hashlib.sha256()
+        lengths, fingerprint = [], hashlib.sha256()
         for f in files:
             meta = json.loads(Path(f + ".metadata.json").read_text())
+            if meta["robot"] != ROBOT_NAME or meta["quaternion_format"] != "wxyz":
+                raise ValueError(f"Motion metadata does not match selected robot: {f}")
             n = int(np.floor((meta["frames"] - 1) / meta["fps"] / CONTROL_DT)) + 1
             if n < 2:
                 raise ValueError(f"Motion needs at least two control frames: {f}")
-            headers.append(meta)
             lengths.append(n)
             st = os.stat(f)
             fingerprint.update(json.dumps([Path(f).name, meta, st.st_size, st.st_mtime_ns], sort_keys=True).encode())
-        fingerprint.update(str(CONTROL_DT).encode())
+        fingerprint.update(json.dumps(["motion_pool_v1", CONTROL_DT, ROBOT_NAME, JOINT_NAMES]).encode())
         self.catalog_hash = fingerprint.hexdigest()
         self.catalog_len = torch.tensor(lengths, dtype=torch.long)
         self.catalog_num_frames = sum(lengths)
@@ -59,7 +61,7 @@ class MotionPool(MotionLib):
         self._cache = {}
         self.resident_ids = []
         self.last_refresh_s = self.last_loaded = self.refresh_count = 0
-        self.stats_cache, self._headers = stats_cache, headers
+        self.stats_cache = stats_cache
         count = max(1, round(len(files) * active_ratio))
         if state is not None:
             if state["catalog_hash"] != self.catalog_hash:
@@ -228,6 +230,9 @@ class MotionPool(MotionLib):
             tmp = path.with_suffix(f".{os.getpid()}.tmp")
             torch.save(moments, tmp)
             os.replace(tmp, path)
+        if moments["count"] != self.catalog_num_frames or not (
+                torch.isfinite(moments["mean"]).all() and torch.isfinite(moments["var"]).all()):
+            raise ValueError(f"Invalid full-catalog action statistics cache: {path}")
         return moments["var"].to(self.device), moments["mean"].to(self.device), moments["count"]
 
     def metrics(self):

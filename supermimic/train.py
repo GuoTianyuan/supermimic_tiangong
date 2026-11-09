@@ -463,7 +463,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
                   ("Critic loss", f"{r['v_loss']:.4f}"),
                   ("Critic V(s_H) mean / max", f"{r['v_end_mean']:.2f} / {r['v_end_max']:.2f} "
                    f"({100 * r['v_end_over']:.1f}% above the max return {G_MAX:.0f})"),
-                  ("Imagined reward / survival", f"{r['imag_rew']:.3f} / {r['imag_survival']:.3f}"),
+                  ("Imagined net reward / survival", f"{r['imag_reward_normalized']:.3f} / {100*r['imag_survival']:.2f}%"),
                   ("Action loop gain median / max", f"{r['a_gain_med']:.2f} / {r['a_gain_max']:.2f}")]  # fmt: skip
     if dr.terms:
         lines.append(("DR range scale (mean of terms)", f"{100 * r['dr_scale']:.0f}%"))
@@ -471,7 +471,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
         lines.append(("Diverged sim states (reset)", f"{r['sim_nonfinite']} in this window"))
     if not policy:
         lines.append(("Policy updates", f"start after iteration {args.wm_only_iters}"))
-    lines.append(("Sim reward per step", f"{r['sim_rew']:.3f}"))
+    lines.append(("Sim net reward / maximum", f"{r['sim_reward_normalized']:.3f}"))
     lines.append(("Smoothness penalty / tracking", f"{100 * r['smooth_pen_frac']:.1f}% (sum qdd^2 {r['joint_acc']:.3g})"))
     if n_done:
         lines += [("Mean episode length", f"{r['ep_len']:.1f} steps ({r['ep_len'] * CONTROL_DT:.1f} s)"),
