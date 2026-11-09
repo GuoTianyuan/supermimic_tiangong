@@ -129,8 +129,13 @@ class TrackingSim:
         self.ep_disc_ret = torch.zeros(self.N, device=dev)
         self.ep_ret = torch.zeros(self.N, device=dev)
         self.G_max = MAX_STEP_REWARD / (1 - gamma)
-        self.bin_G = torch.full((motion.num_bins,), 0.0, device=dev)
-        self.bin_w_avg = torch.full((motion.num_bins,), 1.0 / motion.num_bins, device=dev)
+        if hasattr(motion, "bin_returns"):
+            # Restore before the constructor's first reset, so it uses the saved sampler too.
+            self.bin_G = motion.bin_returns[motion.bin_global.cpu()].to(dev)
+            self.bin_w_avg = motion.bin_weights[motion.bin_global.cpu()].to(dev)
+        else:
+            self.bin_G = torch.full((motion.num_bins,), 0.0, device=dev)
+            self.bin_w_avg = torch.full((motion.num_bins,), 1.0 / motion.num_bins, device=dev)
         self.done_eval = torch.zeros(self.N, dtype=torch.bool, device=dev)
         self.failed_eval = torch.zeros(self.N, dtype=torch.bool, device=dev)
         self.n_nonfinite = 0  # diverged transitions so far

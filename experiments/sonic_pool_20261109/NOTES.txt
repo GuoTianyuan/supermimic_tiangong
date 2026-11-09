@@ -35,3 +35,16 @@ Joint acceleration uses control-step velocity differences, not a physics substep
 no physical failure before clip/time end, not complete-motion coverage. Episode averages are
 now pooled per episode rather than averaging means of variable-size end batches. Existing CSV
 columns remain in order; new fields are appended. Old resumed rows get NaN for unavailable fields.
+
+Validation2026-11-09:
+- CPU/GPU refresh and compiled-query regressions passed. At ratio1 the adaptive-bin sampler
+  produces identical draws/EMA updates to the original. Cache rotation preserves referenced
+  targets, goals, reward/Critic values and gradients bitwise in the checked inputs.
+- 8env/64batch training4updates+resume to6 passed;4096env/4096batch/replay1000 training2updates
+  +resume to4 passed with69CSV columns and68TensorBoard tags. All weights/metrics finite.
+- Full SONIC statistics:116552clips,75635127frames. Actor/WM fixed action mean differs from
+  the original dense2GPU checkpoint by at most2.39e-7, variance by1.91e-6 (streaming accumulation).
+- Seed0 active_ratio.3 selects34966clips/22836944frames, payload estimate28.50GiB plus indices
+  and replay-pinned legacy references. Full-catalog GPU residency/long-run speed not benchmarked.
+- Follow-up review initializes restored bin estimates BEFORE the simulator's first reset,
+  rather than overwriting the sampler after its first draw. Validated by another resume check.

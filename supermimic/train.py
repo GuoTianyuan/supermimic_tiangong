@@ -659,9 +659,6 @@ with launch_simulation(sim_cfg, args):
     dr_scale = curriculum_scale(dr.terms, dr_curriculum, args.dr_ramp, start_it)
     env = TrackingSim(sim_cfg, args.num_envs, motion, mdp, gamma=args.gamma, dr=dr, dr_scale=dr_scale,
                       reset_a_prev=args.reset_a_prev, reset_temp=args.reset_temp)
-    if isinstance(motion, MotionPool):
-        env.bin_G = motion.bin_returns[motion.bin_global.cpu()].to(dev)
-        env.bin_w_avg = motion.bin_weights[motion.bin_global.cpu()].to(dev)
     buffer = ReplayBuffer(args.buffer_steps, args.num_envs, dev, xi_dim=dr.xi_dim)
     real_metrics = RealMetrics(dev)
     obs_hist = torch.zeros(args.num_envs, Hh, OBS_DIM, device=dev)
