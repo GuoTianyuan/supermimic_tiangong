@@ -142,7 +142,7 @@ def main():
         meter = RealMetrics(dev)
         meter.update(dict(r=r1.detach(),terms={k:v.detach() for k,v in terms.items()}))
         metrics = meter.flush()
-        assert abs(metrics["track_fraction"]-float(terms["track"].mean()/MAX_STEP_REWARD)) < 1e-6
+        assert abs(metrics["track_fraction"]-float(terms["track"].detach().mean()/MAX_STEP_REWARD)) < 1e-6
         assert all(np.isfinite(v) for v in metrics.values())
         assert all(v == 0 for v in meter.flush().values())
         # Repeat refreshes with unchanged valid replay. Every old reference must remain exact.

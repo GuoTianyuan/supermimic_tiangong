@@ -1,0 +1,37 @@
+2026-11-09: control-100hz-pool, derived from control-100hz65c6d15.
+User approved WBT-style subset rotation, keeping resampling/FK/adaptive bins/full-catalog
+normalization. User explicitly chose active ratio tuning instead of a byte/frame capacity cap.
+No current training is restarted or replaced by this branch.
+
+Preset: single GPU5,4096 env/WM batch/Actor batch;100Hz, full SONIC, horizon32, history10,
+future10, colleague original full DR/dexevt/PD/action scales/reward weights. The preset adds
+active_ratio=.3, replacement=.25 of the complete catalog, refresh every1500 learner updates.
+This is a data-availability experiment, distinct from the pure CPU-body-table storage branch.
+
+References:
+WBT branch dvt_29dof_training_base, commit33f9339ba32e5bdcb2ca55c134007c0eb5ff94d5,
+mdp/motion_pool.py and utils/my_on_policy_runner.py.
+We reuse active/resident separation and CPU caching, not WBT's FPS assumptions, body target
+source, uniform-per-clip sampler or grouped-environment assignment.
+
+Index lifecycle:
+- Every valid circular replay row pins its entire source clip, including future imagination
+  targets. Running episodes pin their clip and original start bin too.
+- Rotation occurs only after policy/critic backward. Frame offsets and start bins are remapped
+  together; state/action/xi/history tensors and episode state are preserved.
+- Old clips are excluded from new reset sampling immediately but released only on a refresh
+  when no environment/replay reference remains. Legacy clips can raise actual residency above30%.
+- Cached target tensors remain bitwise unchanged across rotation. Newly loaded clips use the
+  original MotionLib interpolation/FK. As in the original implementation, TF32 FK rounding can
+  depend on precomputation batch shape; cross-loader/shape equality is not implied.
+- Pool state (including bin estimates) is checkpointed. Replay is not checkpointed and warms
+  up on resume. Per-rank pool states require the original world size and pool schedule.
+
+Diagnostics:
+No reward weights, formula or termination behavior changed. Real simulator components are
+reported per control step in CSV/TensorBoard; terminal also shows each positive component as
+percent of its own maximum. Tracking errors are RMSE over the log window, not imagined errors.
+Joint acceleration uses control-step velocity differences, not a physics substep. Success is
+no physical failure before clip/time end, not complete-motion coverage. Episode averages are
+now pooled per episode rather than averaging means of variable-size end batches. Existing CSV
+columns remain in order; new fields are appended. Old resumed rows get NaN for unavailable fields.

@@ -9,6 +9,7 @@ averaged over ranks, so the networks stay identical and see all motions.
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime
 import json
 import math
@@ -175,6 +176,10 @@ if not 0 < args.motion_active_ratio <= 1 or args.motion_refresh_iters < 0 or not
     raise ValueError("Invalid active ratio / motion refresh interval / replacement ratio")
 if pool_states and args.motion_active_ratio == 1:
     raise ValueError("Resume a pooled run with its original motion_active_ratio")
+if pool_states and (len(pool_states) != WORLD or
+                   ck["args"].get("motion_replace_ratio") != args.motion_replace_ratio or
+                   ck["args"].get("motion_refresh_iters") != args.motion_refresh_iters):
+    raise ValueError("Resume pooled runs with their original world size and pool schedule")
 if args.motion_active_ratio < 1:
     motion = MotionPool.from_dir(args.motion_dir, kin, dev, RANK, WORLD, exclude=args.motion_exclude,
         active_ratio=args.motion_active_ratio, replace_ratio=args.motion_replace_ratio, seed=args.seed+RANK,
@@ -405,7 +410,7 @@ TB_TAGS = {
     "sim_rew": "1_tracking/sim_reward_per_step",
     "term_frac": "1_tracking/fall_rate_of_finished_episodes",
     "ep_len": "1_tracking/episode_length_steps",
-    "ep_ret_norm": "1_tracking/finished_episode_return_normalized_biased",
+    "ep_ret_norm": "1_tracking/finished_episode_return_normalized",
     "wm_loss": "2_world_model/loss_per_step",
     "wm_err8": "2_world_model/error_after_8_steps",
     "imag_rew": "3_policy_imagination/reward_per_step",
@@ -464,7 +469,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
         lines.append(("DR range scale (mean of terms)", f"{100 * r['dr_scale']:.0f}%"))
     if r["sim_nonfinite"]:
         lines.append(("Diverged sim states (reset)", f"{r['sim_nonfinite']} in this window"))
-    else:
+    if not policy:
         lines.append(("Policy updates", f"start after iteration {args.wm_only_iters}"))
     lines.append(("Sim reward per step", f"{r['sim_rew']:.3f}"))
     lines.append(("Smoothness penalty / tracking", f"{100 * r['smooth_pen_frac']:.1f}% (sum qdd^2 {r['joint_acc']:.3g})"))
@@ -760,13 +765,15 @@ with launch_simulation(sim_cfg, args):
         new_csv = not os.path.isfile(csv_path)
         if start_it and not new_csv:
             with open(csv_path) as fh:
-                lines = fh.readlines()
-            # rows of an older version lack the newer columns at the end; rows after the checkpoint are redone
-            rows = [ln for ln in lines[1:] if ln.split(",")[0].isdigit() and int(ln.split(",")[0]) <= start_it]
-            if lines and (lines[0] != header or len(rows) != len(lines) - 1):
-                with open(csv_path + ".tmp", "w") as fh:
-                    fh.writelines([header] + rows)
-                os.replace(csv_path + ".tmp", csv_path)
+                reader = csv.DictReader(fh)
+                rows = [row for row in reader if row.get("iteration", "").isdigit()
+                        and int(row["iteration"]) <= start_it]
+            # Preserve the old columns by name; old rows have no new diagnostic observations.
+            with open(csv_path + ".tmp", "w") as fh:
+                writer = csv.DictWriter(fh, CSV_FIELDS, extrasaction="ignore")
+                writer.writeheader()
+                writer.writerows({k: row.get(k, "nan") for k in CSV_FIELDS} for row in rows)
+            os.replace(csv_path + ".tmp", csv_path)
         log_f = open(csv_path, "a")
         if start_it == 0 or new_csv:
             log_f.write(header)
@@ -774,6 +781,7 @@ with launch_simulation(sim_cfg, args):
     t_start = time.time() - wall_offset
     t_session = t_log = time.time()
     steps_log = sim_steps
+    last_log_it = start_it
     step_acc = 0.0
     agg = {"wm": [], "wm8": [], "wm1": [], "pi": [], "v": [], "ir": [], "gn": [], "surv": [], "vm": [], "vx": [], "vo": []}
     done_it = saved_it = start_it
@@ -827,7 +835,8 @@ with launch_simulation(sim_cfg, args):
             total = lambda x: float(sum(float(v) for v in x))  # noqa: E731
             top = lambda x: max((float(v) for v in x), default=0.0)  # noqa: E731
             now = time.time()
-            ips = args.log_every / (now - t_log)
+            ips = (done_it - last_log_it) / (now - t_log)
+            last_log_it = done_it
             sps = (sim_steps - steps_log) / (now - t_log)
             t_log, steps_log = now, sim_steps
             # losses and per-step rewards are averaged over ranks, maxima taken over ranks; episode statistics are pooled
