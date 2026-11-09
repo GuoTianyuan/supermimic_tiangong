@@ -41,3 +41,9 @@ Server checkout worktrees share /root/tg_supermimic/.git; dependencies/env/cache
 View all runs in tmux session supermimic. TensorBoard data is in each run's tensorboard directory.
 
 This checkout: control-100hz
+
+Launcher-only fixes shared by all groups: create the foreground log directory before tee;
+capture TensorBoard PID in the EXIT trap before its local variable leaves scope (also with --no_tb).
+These do not modify training source, data, losses or optimizer settings.
+Original per-step/imagined-return logging divides by0.1; at100Hz its positive maximum is0.5.
+Use ep_ret_norm (which uses MAX_STEP_REWARD) for frequency comparisons, plus physical errors.

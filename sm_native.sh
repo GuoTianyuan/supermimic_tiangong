@@ -101,7 +101,7 @@ cmd__train() {  # body of the tmux session
         tb_pid=$!
         export SUPERMIMIC_TB_URL="http://127.0.0.1:$tb_port"
     fi
-    trap '[ -n "$tb_pid" ] && kill "$tb_pid" 2>/dev/null; true' EXIT
+    trap "[ -n '$tb_pid' ] && kill '$tb_pid' 2>/dev/null; true" EXIT
     echo "SuperMimic train: run $run | robot $robot | GPU $gpu | TensorBoard ${SUPERMIMIC_TB_URL:-off}"
     echo "  Ctrl+C: stop after the current iteration and save a checkpoint | Ctrl+B then D: leave it running"
     local cmd=("$PY" supermimic/train.py --log_dir "logs/$run" "${pass[@]}")
