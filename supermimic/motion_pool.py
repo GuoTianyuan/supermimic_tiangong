@@ -101,6 +101,9 @@ class MotionPool(MotionLib):
                     raise ValueError(f"Metadata frame count does not match loader: {self.files[cid]}")
                 self._cache[cid] = {k: getattr(lib, k)[s:s+n].to("cpu", copy=True) for k in self.FRAME_FIELDS}
             del lib
+            loaded = min(b+len(block), len(missing))
+            if loaded % 2048 == 0 or loaded == len(missing):
+                print(f"[MotionPool] loaded new references {loaded}/{len(missing)}", flush=True)
         self.last_loaded = len(missing)
 
     def _rebuild(self, pinned):
