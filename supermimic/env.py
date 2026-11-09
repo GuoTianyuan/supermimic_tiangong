@@ -25,7 +25,7 @@ from isaaclab.utils import configclass, instantiate, replace
 from .dr import (ARMATURE, CONTACT, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, parse_terms,
                  to_unit, uniform)  # fmt: skip
 from .mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, flatten_state
-from .motion import CONTROL_DT, MotionLib
+from .motion import BIN_FRAMES, CONTROL_DT, MotionLib
 from .robot import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
 from .rotations import mat_to_quat, quat_to_mat, so3_exp
 
@@ -39,7 +39,7 @@ class TrackingSceneCfg(InteractiveSceneCfg):
 
 
 def make_sim(device: str, args) -> SimulationContext:
-    # With actuator delay (args.dr, supermimic/dr.py) TrackingSim runs the four 5 ms physics substeps
+    # With actuator delay (args.dr, supermimic/dr.py) TrackingSim runs the four 2.5 ms physics substeps
     # itself, so it can switch joint targets between them.
     k = 4 if "delay" in parse_terms(getattr(args, "dr", None)) else 1
     physics = NewtonCfg(
@@ -88,7 +88,7 @@ class TrackingSim:
         self.reset_temp = reset_temp
         self.substeps = round(CONTROL_DT / sim_cfg.dt)
         if "delay" in self.dr.terms and self.substeps < self.dr.max_delay:
-            raise ValueError("actuator delay needs the 5 ms physics steps of make_sim(device, args) with args.dr")
+            raise ValueError("actuator delay needs the 2.5 ms physics steps of make_sim(device, args) with args.dr")
         self.max_episode_steps = max_episode_steps if not eval_mode else 10**9
         self.reset_noise = reset_noise and not eval_mode
         dev = self.device
@@ -299,7 +299,7 @@ class TrackingSim:
         probs = 0.5 / m.num_bins + 0.4 * soft + 0.1 * self.bin_w_avg / self.bin_w_avg.sum()
         bins = torch.multinomial(probs, n, replacement=True)
         start = m.bin_start[bins]
-        end = torch.minimum(start + 50, m.clip_end[m.bin_clip[bins]])  # keep >= 1 step before the clip end
+        end = torch.minimum(start + BIN_FRAMES, m.clip_end[m.bin_clip[bins]])  # keep >= 1 step before the clip end
         f = start + (torch.rand(n, device=self.device) * (end - start).float()).long()
         return f, bins
 

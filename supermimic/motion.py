@@ -1,4 +1,4 @@
-"""Reference motion library: LAFAN1 G1 retargets resampled to 50 Hz, with FK of tracked bodies."""
+"""Reference motion library: retargets resampled to the control rate, with FK of tracked bodies."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ from .kinematics import G1Kinematics
 from .robot import JOINT_NAMES, ROBOT_NAME
 from .rotations import mat_to_6d, quat_slerp, quat_to_mat, so3_log, yaw_mat
 
-CONTROL_DT = 0.02
-BIN_FRAMES = 50  # 1 s bins for return-based reset sampling
+CONTROL_DT = 0.01  # 100 Hz policy, replay transitions and world-model steps
+BIN_FRAMES = round(1.0 / CONTROL_DT)  # retain 1 s return-based reset bins
 # per-frame goal parts in MotionLib.goal order, with their sizes
 GOAL_PARTS = {"root_pos": 3, "root_rot": 6, "root_lin_vel": 3, "root_ang_vel": 3, "q": 29, "qd": 29}
 
@@ -59,7 +59,7 @@ class MotionLib:
                 clip_fps = src_fps
             if len(p) < 2:
                 raise ValueError(f"Motion must contain at least two frames: {f}")
-            # resample to 50 Hz
+            # Resample to the control rate, preserving the source clip's duration.
             T_src = p.shape[0]
             dur = (T_src - 1) / clip_fps
             n = int(np.floor(dur / CONTROL_DT)) + 1

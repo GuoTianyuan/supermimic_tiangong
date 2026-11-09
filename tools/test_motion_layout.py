@@ -10,7 +10,7 @@ import mujoco
 import numpy as np
 import torch
 from supermimic.kinematics import G1Kinematics
-from supermimic.motion import MotionLib
+from supermimic.motion import BIN_FRAMES, CONTROL_DT, MotionLib
 from supermimic.robot import JOINT_NAMES, MJCF_PATH, TRACKED_BODIES
 
 ap=argparse.ArgumentParser(description=__doc__)
@@ -22,11 +22,24 @@ if a.motion_file.endswith('.npz'):
     raw=np.load(a.motion_file)
     meta=json.loads(Path(a.motion_file+'.metadata.json').read_text())
     order=[meta['joint_names'].index(n) for n in JOINT_NAMES]
-    assert float(raw['fps'].reshape(-1)[0])==50
-    assert motion.num_frames==len(raw['joint_pos'])
-    torch.testing.assert_close(motion.q,torch.from_numpy(raw['joint_pos'][:,order].copy()),atol=5e-5,rtol=1e-5)
-    torch.testing.assert_close(motion.qd,torch.from_numpy(raw['joint_vel'][:,order].copy()),atol=1e-3,rtol=1e-4)
-    torch.testing.assert_close(motion.root_v,torch.from_numpy(raw['body_lin_vel_w'][:,0].copy()),atol=5e-5,rtol=1e-5)
+    fps = float(raw['fps'].reshape(-1)[0])
+    duration = (len(raw['joint_pos']) - 1) / fps
+    assert motion.num_frames == int(np.floor(duration / CONTROL_DT)) + 1
+    assert np.isclose(BIN_FRAMES * CONTROL_DT, 1.0)
+    # Match the loader's float32 query times, including rounding in long clips.
+    phase = np.arange(motion.num_frames, dtype=np.float32) * np.float32(CONTROL_DT) * np.float32(fps)
+    def interpolated(values):
+        return np.stack([np.interp(phase, np.arange(len(values)), values[:, j])
+                         for j in range(values.shape[1])], axis=-1)
+    root = meta['root_body_index']
+    for actual, source, atol in (
+        (motion.q, raw['joint_pos'][:, order], 5e-5),
+        (motion.qd, raw['joint_vel'][:, order], 1e-3),
+        (motion.root_p, raw['body_pos_w'][:, root], 5e-5),
+        (motion.root_v, raw['body_lin_vel_w'][:, root], 5e-5),
+        (motion.root_w, raw['body_ang_vel_w'][:, root], 5e-5),
+    ):
+        np.testing.assert_allclose(actual.numpy(), interpolated(source), atol=atol, rtol=1e-4)
 model=mujoco.MjModel.from_xml_path(MJCF_PATH);data=mujoco.MjData(model)
 ids=torch.linspace(0,motion.num_frames-1,19).long()
 S=motion.ref_state(ids)

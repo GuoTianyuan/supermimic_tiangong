@@ -3,6 +3,13 @@
 基于 `2f2f05fc7a33992b24757a2edb3bf572cd38c0df` 的可部署版本。
 默认使用 **Conda**，包含机器人 USD/URDF/MJCF/mesh、示例训练动作，以及固定版本 Isaac Lab/Newton 源码。
 
+`control-100hz` 分支只调整控制频率及相关时间换算：控制、replay 和 WM 每步均为
+10 ms；原 motion loader 按源 FPS 插值到 100 Hz，采样 bin 仍为 1 s。
+保留每控制步 4 个物理子步，因此子步为 2.5 ms；delay DR 的 0–4 个子步对应 0–10 ms。
+PD、动作缩放、URDF、奖励公式及权重、归一化、网络和训练参数保持原样。
+历史和未来参考仍各 10 帧，想象仍默认 32 步；对应时长随控制周期减半。
+回合上限仍为 500 步（现在是 5 s）。现有 50 Hz 权重不会自动变成 100 Hz 权重。
+
 ```bash
 git clone -b mimic git@git.x-humanoid-cloud.com:silence143/tg_supermimic.git
 cd tg_supermimic
