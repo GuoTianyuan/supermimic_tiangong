@@ -1,0 +1,43 @@
+SONIC control-rate and delay/storage comparison — 2026-11-09 (Asia/Shanghai)
+
+Source main: 8cefd07. Existing colleague SONIC 50 Hz + delay run stopped and saved at 81087.
+New runs all start from zero, without --resume, on the same 116552 validated SONIC clips.
+Old verified sequential FK concatenation (d1cecef) is used in every new branch. It only releases
+temporary chunk lists sooner; stored tensor values and the original algorithm remain unchanged.
+
+1. control-100hz: original dense GPU reference tables, GPUs 1/2, 2048 envs and WM/pi batch per rank;
+   global envs / WM batch / pi batch = 4096 / 4096 / 4096. Control 10 ms, physics 2.5 ms.
+2. ablation/no-delay: from main, 50 Hz, GPU3, 4096 each. Runtime source is unchanged apart from the
+   same memory-peak patch; the launcher explicitly selects pd,push,mass,armature,joint_friction,contact.
+   This disables only delay DR. The extended xi and previous-action inputs are retained, with nominal
+   zero delay encoded as -1. Physics still has four 5 ms internal substeps per control step.
+3. control-100hz-compact: from the 100 Hz branch, GPU4, 4096 each. Cache the exact same root/joint
+   trajectories on GPU, and query the existing FK for requested reference body frames instead of
+   retaining four dense whole-dataset body tables. No CPU transfer in reward/critic, no precision
+   reduction, no interpolation, sampling, goal, reward, network or optimizer change. Test against
+   the dense implementation for state tables, goals, reward, critic inputs and gradients.
+
+Shared: original friend's URDF/PD/action scales, reward dexevt (action-rate -0.1, joint acceleration
+-2e-6), original observation/WM/critic normalization, analytic sigmoid imagined termination;
+full DR with contact, same 3000/6000 curriculum and 2000 ramp except delay disabled in group2;
+seed0, replay1000/env, warmup64, WM-only500 learning iterations, WM8-step x10 batches/update,
+UTD0.4, H32, hist10, goals10, lr2e-4, gamma.99, lambda.95, 5 critic epochs x4 minibatches,
+bf16, stop320000 learning iterations, checkpoint every2500, log every50. No stopping of the
+unrelated own-code joint-acceleration run on GPU0.
+
+Frequency change does not preserve physical history/horizon/discount time: 100 Hz H32 is 0.32 s,
+future10 covers +10..100 ms, history10 spans90 ms, maxepisode500 is5 s, delay0..4 substeps is0..10ms.
+At 50 Hz these durations are doubled. These effects are intentional for the minimal 100 Hz branch.
+
+Comparison caveats: rank-local motion sharding and adaptive sampling plus distributed floating
+point reductions mean the two-GPU dense and one-GPU compact training trajectories need not be
+bitwise equal even with identical global batch and seed. Validate storage equivalence with shared
+inputs/weights separately; do not attribute all long-run differences to storage. Compare wall clock,
+global simulator transitions and learner iterations, not checkpoint number across our code and tg.
+The colleague implementation counts learner iterations, with 2/3 vector environment steps per
+iteration (UTD .4); our own code labels iterations as vector environment steps.
+
+Server checkout worktrees share /root/tg_supermimic/.git; dependencies/env/cache/logs stay in /media.
+View all runs in tmux session supermimic. TensorBoard data is in each run's tensorboard directory.
+
+This checkout: control-100hz
