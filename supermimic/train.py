@@ -825,8 +825,8 @@ with launch_simulation(sim_cfg, args):
         done_it = it + 1
         if isinstance(motion, MotionPool) and args.motion_refresh_iters and done_it % args.motion_refresh_iters == 0:
             motion.refresh(env, buffer)
-            if int(motion.clip_len.max()) <= HZ:
-                raise ValueError("No resident clip can supply the imagination horizon")
+            if int(motion.catalog_len[motion.active_ids].max()) <= HZ:
+                raise ValueError("No active clip can supply the imagination horizon; increase active ratio")
             print(f"[rank {RANK}] motion pool refreshed: {motion.metrics()}", flush=True)
         if it == start_it and MAIN:
             print(f"First iteration done after {time.time() - t_session:.0f} s; progress is printed every {args.log_every} iterations.", flush=True)

@@ -17,7 +17,7 @@ import time
 import numpy as np
 import torch
 
-from .motion import BIN_FRAMES, CONTROL_DT, MotionLib, _load_npz
+from .motion import BIN_FRAMES, CONTROL_DT, MotionLib
 from .robot import JOINT_NAMES, ROBOT_NAME
 
 
@@ -213,8 +213,21 @@ class MotionPool(MotionLib):
             count = 0
             total, square = torch.zeros(29, dtype=torch.float64), torch.zeros(29, dtype=torch.float64)
             for i, f in enumerate(self.files):
-                _, _, q, _, fps = _load_npz(f)
+                # Statistics need only q. Preserve validation/hash and the exact interpolation,
+                # without decoding all body/velocity arrays for every inactive clip.
+                meta = json.loads(Path(f + ".metadata.json").read_text())
+                if hashlib.sha256(Path(f).read_bytes()).hexdigest() != meta["sha256"]:
+                    raise ValueError(f"Motion changed; regenerate validation metadata: {f}")
+                with np.load(f, allow_pickle=False) as data:
+                    values = np.asarray(data["joint_pos"], dtype=np.float32)
+                    if not np.isfinite(values).all():
+                        raise ValueError(f"Nonfinite joint reference: {f}")
+                    order = [meta["joint_names"].index(n) for n in JOINT_NAMES]
+                    q = torch.from_numpy(values.copy())[:, order]
+                    fps = float(data["fps"].reshape(-1)[0])
                 n = int(self.catalog_len[i])
+                if fps <= 0 or n != int(np.floor((len(q)-1)/fps/CONTROL_DT))+1:
+                    raise ValueError(f"Invalid motion fps/frame metadata: {f}")
                 t = torch.arange(n, dtype=torch.float32) * CONTROL_DT * fps
                 i0 = t.floor().long().clamp(max=len(q)-2)
                 a = (t-i0.float()).clamp(0, 1)[:, None]
