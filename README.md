@@ -6,8 +6,9 @@
 `control-100hz` 分支只调整控制频率及相关时间换算：控制、replay 和 WM 每步均为
 10 ms；原 motion loader 按源 FPS 插值到 100 Hz，采样 bin 仍为 1 s。
 保留每控制步 4 个物理子步，因此子步为 2.5 ms；delay DR 的 0–4 个子步对应 0–10 ms。
-PD、动作缩放、URDF、奖励公式及权重、归一化、网络和训练参数保持原样。
-历史和未来参考仍各 10 帧，想象仍默认 32 步；对应时长随控制周期减半。
+原 `control-100hz` 分支中 PD、动作缩放、URDF、奖励、归一化、网络和训练参数保持原样。
+当前 `control-100hz-pool` 分支已另行加入下面记录的 full WBC 平滑训练配置。
+原 `control-100hz` 的历史和未来参考各 10 帧、想象 32 步；当前 pool 版本改为 WM12／Actor48。
 回合上限仍为 500 步（现在是 5 s）。现有 50 Hz 权重不会自动变成 100 Hz 权重。
 
 ```bash
@@ -31,8 +32,8 @@ bash tools/setup.sh
 
 ### Rotating motion pool (control-100hz-pool)
 
-Use `--motion_active_ratio 0.3 --motion_refresh_iters 1500 --motion_replace_ratio 0.25`
-for a WBT-style rotating subset on one GPU. The ratio is a fraction of clips, not frames;
+Use `--motion_active_ratio 0.3 --motion_refresh_iters 1500 --motion_replace_ratio 0.2`
+for a WBT-style rotating subset on each rank. The ratio is a fraction of clips, not frames;
 there is no byte/frame capacity cap. Replacement counts refer to the full catalog.
 The default ratio `1` retains the original dense loader.
 
@@ -41,7 +42,8 @@ or **any valid replay row** stay resident until a later refresh can release them
 run between learner iterations and remap environment frames, episode-start bins and circular
 replay frame indices together. Replay and episode state are not cleared. A CPU cache reuses
 resident trajectories; only new clips are read and passed through the original interpolation
-and FK pipeline. All resident reference fields are on GPU during training.
+and FK pipeline. Root/joint/goal/index fields stay on GPU. Float32 body reference tables are cached per clip on CPU;
+queried batches transfer to GPU before reward/critic kernels. No reference quantization is used.
 
 Return-based one-second-bin sampling remains in use, conditioned on the current active set.
 This changes the temporal availability of data and is an additional experiment, not a pure
@@ -60,3 +62,11 @@ not successful traversal of every frame of a motion. Finished-episode means now 
 each episode equally, rather than each vector step that happened to contain an ending.
 Pool logs distinguish active/resident/legacy counts, tensor memory, refresh latency and
 motion-start coverage; none of these claims full-motion coverage.
+
+### Full WBC pool experiment (2026-11-11)
+
+Current preset: 100 Hz control / 400 Hz physics, action-rate -0.4, joint-acc -3e-6, gamma .995,
+WM12 / Actor48; four GPUs, requested4096 environments and4096 WM/Actor batch per GPU.
+Active30%, replacement20% of the full catalog, every1500 learner iterations.
+Exact parameters, validation scope and comparison caveats: [experiment record](experiments/full_wbc_pool_20261111/README.txt).
+Historical SONIC pool preset is at commit `a8266ac`; do not mix its launch arguments with the new reward defaults.

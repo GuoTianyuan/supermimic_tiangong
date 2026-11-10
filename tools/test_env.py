@@ -55,7 +55,7 @@ with launch_simulation(sim_cfg, args):
     print("FK rot err xyzw", rot_angle_sq(bR, sR_xyzw).sqrt().max().item(), " wxyz", rot_angle_sq(bR, sR_wxyz).sqrt().max().item())
     sv = d.body_link_vel_w.torch[:, ids]
     print("FK linvel err", (bv - sv[..., :3]).norm(dim=-1).max().item(), " angvel err", (bw - sv[..., 3:]).norm(dim=-1).max().item())
-    print("ref body vs FK(sim) pos err", (motion.body_p[frames] - bp).norm(dim=-1).max().item())
+    print("ref body vs FK(sim) pos err", (motion.body_reference(frames)[0] - bp).norm(dim=-1).max().item())
     # open-loop reference playback via joint targets
     rs = []
     # Evaluation does not reset completed clips; stop before short samples run out.
