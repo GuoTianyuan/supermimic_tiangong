@@ -37,7 +37,7 @@ q = q0.expand(n, 29).clone()
 qd = (.2 * torch.randn(n, 29)).requires_grad_()
 S = p, R, v, w, q, qd
 bp, bR, bv, bw = kin.forward(*S)
-motion = SimpleNamespace(root_p=p, root_R=R, q=q, body_p=bp, body_R=bR, body_v=bv, body_w=bw)
+motion = SimpleNamespace(root_p=p, root_R=R, q=q, qd=qd, body_p=bp, body_R=bR, body_v=bv, body_w=bw)
 motion.body_reference = lambda f, positions_only=False: (bp[f], None, None, None) if positions_only else (bp[f],bR[f],bv[f],bw[f])
 f = torch.arange(n)
 cfg = reward_cfg("dexevt")

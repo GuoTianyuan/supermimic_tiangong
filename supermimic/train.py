@@ -724,7 +724,9 @@ with launch_simulation(sim_cfg, args):
         ck = {"wm": wm.state_dict(), "pi": pi.state_dict(), "critic": critic.state_dict(), "critic_targ": critic_targ.state_dict(),
               "opt_wm": opt_wm.state_dict(), "opt_pi": opt_pi.state_dict(), "opt_v": opt_v.state_dict(), "iteration": n_it,
               "wall_time": time.time() - t_start, "sim_steps": sim_steps, "args": vars(args),
-              "saved_at": time.strftime("%Y-%m-%d %H:%M:%S")}  # fmt: skip
+              "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+              "cuda_memory": dict(peak_allocated_gib=torch.cuda.max_memory_allocated()/2**30,
+                                  peak_reserved_gib=torch.cuda.max_memory_reserved()/2**30)}  # fmt: skip
         if pool_states is not None:
             ck["motion_pool"] = pool_states
         last = os.path.join(args.log_dir, "last.pt")
