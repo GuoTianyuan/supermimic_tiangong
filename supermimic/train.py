@@ -30,19 +30,19 @@ parser.add_argument("--num_envs", type=int, default=4096, help="environments per
 parser.add_argument("--iterations", type=int, default=320_000)
 parser.add_argument("--buffer_steps", type=int, default=1000)
 parser.add_argument("--utd", type=float, default=0.4, help="updates per vectorized simulator step")
-parser.add_argument("--horizon", type=int, default=32)
+parser.add_argument("--horizon", type=int, default=48)
 parser.add_argument("--goal_frames", type=int, default=10)
 parser.add_argument("--goal_drop", type=str, default=None,
                     help="comma list of reference parts left out of the policy's goal input: root_pos (future pelvis "
                     "displacement), root_rot, root_lin_vel, root_ang_vel, q, qd. Rewards, termination and resets still "
                     "use the full reference. Default: none; a resumed run keeps its checkpoint's")  # fmt: skip
 parser.add_argument("--hist", type=int, default=10)
-parser.add_argument("--wm_window", type=int, default=8)
+parser.add_argument("--wm_window", type=int, default=12)
 parser.add_argument("--wm_batches", type=int, default=10)
 parser.add_argument("--wm_batch", type=int, default=2048)
 parser.add_argument("--pi_batch", type=int, default=4096)
 parser.add_argument("--lr", type=float, default=2e-4)
-parser.add_argument("--gamma", type=float, default=0.99)
+parser.add_argument("--gamma", type=float, default=0.995)
 parser.add_argument("--lam", type=float, default=0.95)
 parser.add_argument("--action_noise", type=float, default=0.1)
 parser.add_argument("--critic_epochs", type=int, default=5)
@@ -166,6 +166,8 @@ if ck is not None and ck["args"].get("dynamics", "default") != args.dynamics:
           f"continuing with --dynamics {args.dynamics} (the world model has to re-adapt).", flush=True)
 set_dynamics(args.dynamics)
 dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
+args.reward_cfg = vars(reward_cfg(args.dynamics))
+args.simulation_timing = dict(control_dt=CONTROL_DT, physics_dt=CONTROL_DT/4, physics_substeps=4)
 if MAIN:
     json.dump(vars(args), open(os.path.join(args.log_dir, "args.json"), "w"), indent=2)
 
@@ -412,7 +414,7 @@ TB_TAGS = {
     "ep_len": "1_tracking/episode_length_steps",
     "ep_ret_norm": "1_tracking/finished_episode_return_normalized",
     "wm_loss": "2_world_model/loss_per_step",
-    "wm_err8": "2_world_model/error_after_8_steps",
+    "wm_err8": f"2_world_model/error_after_{args.wm_window}_steps",
     "imag_rew": "3_policy_imagination/reward_per_step",
     "imag_survival": "3_policy_imagination/survival_rate_over_horizon",
     "pi_loss": "3_policy_imagination/policy_loss",
@@ -457,7 +459,7 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
     policy = r["iteration"] > args.wm_only_iters
     title = f"Learning iteration {r['iteration']}/{args.iterations}  ({'world model + policy' if policy else 'world-model warm-up'})"
     free, total = torch.cuda.mem_get_info()
-    lines = [("WM loss / NSE1 / NSE8", f"{r['wm_loss']:.4f} / {r['wm_nse1']:.4f} / {r['wm_err8']:.4f}")]
+    lines = [(f"WM loss / NSE1 / NSE{args.wm_window}", f"{r['wm_loss']:.4f} / {r['wm_nse1']:.4f} / {r['wm_err8']:.4f}")]
     if policy:
         lines += [("Policy loss / grad norm (max)", f"{r['pi_loss']:.3f} / {r['pi_gradnorm']:.3f} ({r['pi_gradnorm_max']:.3f})"),
                   ("Critic loss", f"{r['v_loss']:.4f}"),
@@ -637,7 +639,7 @@ def policy_update():
         torch.cuda.synchronize()
         print(f"[prof] imagine fwd {1e3*(tq1-tq0):.0f} ms | bwd {1e3*(tq2-tq1):.0f} ms | critic {1e3*(time.time()-tq2):.0f} ms", flush=True)
     v_stats = (v_end.mean(), v_end.max(), (v_end > G_MAX).float().mean())
-    return loss.detach(), v_mse, (r_sum / HZ / 0.1).mean(), gn.detach(), c.mean().detach(), *v_stats
+    return loss.detach(), v_mse, (r_sum / HZ / MAX_STEP_REWARD).mean(), gn.detach(), c.mean().detach(), *v_stats
 
 
 def a_prev_gain(n: int = 256) -> torch.Tensor:
@@ -683,7 +685,7 @@ with launch_simulation(sim_cfg, args):
             wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"]), out["a_prev"]))
             wm.out_norm.update(wm.targets(S0, S1))
             sim_steps += args.num_envs * WORLD
-            stats["r"].append(out["r"].mean() / 0.1)
+            stats["r"].append(out["r"].mean() / MAX_STEP_REWARD)
             for k in SMOOTH_KEYS:
                 stats[k].append(out["terms"][k].mean())
             if "ep_len" in out:
@@ -733,6 +735,8 @@ with launch_simulation(sim_cfg, args):
         print(f" {envs} | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
               f" | checkpoint every {args.ckpt_every}")
         print(f" Joint dynamics: {args.dynamics}")
+        print(f" Reward action-rate {mdp.cfg.w_action_rate:g}, joint-acc {mdp.cfg.w_joint_acc:g}; gamma {args.gamma:g}; "
+              f"WM {args.wm_window} steps, Actor {HZ} steps; control {CONTROL_DT:g}s, physics {CONTROL_DT/4:g}s")
         print(" Domain randomization: friction, joint offsets, torso COM" + (f" + {describe(dr.terms)} (xi {dr.xi_dim})" if dr.terms else ""))
         if dr_curriculum:
             print(f"   curriculum: + {describe(dr.terms - LATE_TERMS) or '-'} from iteration {dr_curriculum[0]}, "
@@ -869,7 +873,7 @@ with launch_simulation(sim_cfg, args):
             extra.update(pool_metrics)
             extra.update(wm_nse1=mean(agg["wm1"]), success_frac=1-n_term/n_done if n_done else 0.0,
                          episodes_ended=n_done, episodes_failed=n_term, ended_clip=n_clip, ended_time=n_time,
-                         imag_reward_normalized=vals[4]*.1/MAX_STEP_REWARD)
+                         imag_reward_normalized=vals[4])
             if WORLD > 1:
                 e1 = torch.tensor(extra["wm_nse1"], device=dev)
                 dist.all_reduce(e1, op=dist.ReduceOp.AVG)

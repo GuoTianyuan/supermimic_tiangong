@@ -148,7 +148,7 @@ def main():
         module=importlib.util.module_from_spec(spec)
         sys.modules[spec.name]=module
         spec.loader.exec_module(module)
-        old_mdp = module.MDP(kin,pool,q0,module.reward_cfg("dexevt"))
+        old_mdp = module.MDP(kin,pool,q0,module.RewardCfg(**vars(mdp.cfg)))
         state = tuple(x.clone().requires_grad_(True) for x in pool.ref_state(frames))
         r0 = old_mdp.reward(state,frames,aa,aprev,qd_prev=state[5])
         r1, terms = mdp.reward(state,frames,aa,aprev,terms=True,qd_prev=state[5])
@@ -199,7 +199,7 @@ def main():
         assert restored.rng.bit_generator.state==pool.rng.bit_generator.state
         report=dict(device=dev, circular_replay_rows=5, refreshes=pool.refresh_count,
             root_joint_and_cached_body_references_bitwise_equal=True, goals_rewards_critic_gradients_bitwise_equal=True,
-            diagnostics_preserve_original_reward_and_gradients=True, full_catalog_action_stats_match=True,
+            diagnostics_preserve_same_config_reward_and_gradients=True, full_catalog_action_stats_match=True,
             original_adaptive_sampler_preserved=True, only_active_clips_receive_starts=True,
             releases_unreferenced_legacy=True, checkpoint_pool_state_restored=True,
             compiled_refresh_calls=compiled_calls, metrics=metrics, pool=pool.metrics())

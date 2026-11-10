@@ -55,7 +55,7 @@ class RewardCfg:
     body_angvel_std: float = 3.14
     root_pos_std: float = 0.3
     root_ori_std: float = 0.4
-    w_action_rate: float = -0.1
+    w_action_rate: float = -0.4
     w_joint_acc: float = 0.0  # sum of squared joint accelerations over the control step [(rad/s^2)^2]
     w_joint_limit: float = -2.0
     soft_limit_factor: float = 0.9
@@ -64,9 +64,8 @@ class RewardCfg:
 
 
 def reward_cfg(dynamics: str = "default") -> RewardCfg:
-    """The paper's reward; with the DexEVT dynamics also a small joint-acceleration penalty (as the mimic
-    branch's dance profile, about 1 % of the tracking reward), against foot jitter on hard ground."""
-    return RewardCfg(w_joint_acc=-2e-6) if dynamics == "dexevt" else RewardCfg()
+    """100 Hz smoothing: action-rate -0.4 and DexEVT acceleration -3e-6; tracking unchanged."""
+    return RewardCfg(w_joint_acc=-3e-6) if dynamics == "dexevt" else RewardCfg()
 
 
 def flatten_state(S) -> torch.Tensor:
