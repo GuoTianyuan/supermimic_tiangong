@@ -122,22 +122,23 @@ class MDP:
         return o + (2 * torch.rand_like(o) - 1) * self.obs_noise
 
     # ---------------- reward / termination ----------------
-    def reward(self, S, f, a, a_prev, terms: bool = False, qd_prev=None):
+    def reward(self, S, f, a, a_prev, terms: bool = False, qd_prev=None, ref_bodies=None):
         """Per-step reward (already multiplied by dt) comparing S with reference frame f; ``qd_prev``: the joint
         velocities one control step before S (needed by ``w_joint_acc``)."""
         c, m = self.cfg, self.motion
         p, R, v, w, q, qd = S
         bp, bR, bv, bw = self.kin.forward(p, R, v, w, q, qd)
         rp, rR = m.root_p[f], m.root_R[f]
+        rbp, rbR, rbv, rbw = m.body_reference(f) if ref_bodies is None else ref_bodies
         # reference bodies re-anchored to the robot's root (xy + yaw), as in BeyondMimic
         dR = yaw_mat(R @ rR.transpose(-1, -2))
         anchor = torch.cat((p[..., :2], rp[..., 2:3]), -1)
-        ref_bp = anchor.unsqueeze(-2) + ((dR.unsqueeze(-3) @ (m.body_p[f] - rp.unsqueeze(-2)).unsqueeze(-1)).squeeze(-1))
-        ref_bR = dR.unsqueeze(-3) @ m.body_R[f]
+        ref_bp = anchor.unsqueeze(-2) + ((dR.unsqueeze(-3) @ (rbp - rp.unsqueeze(-2)).unsqueeze(-1)).squeeze(-1))
+        ref_bR = dR.unsqueeze(-3) @ rbR
         e_pos = ((ref_bp - bp) ** 2).sum(-1).mean(-1)
         e_ori = rot_angle_sq(ref_bR, bR).mean(-1)
-        e_lv = ((m.body_v[f] - bv) ** 2).sum(-1).mean(-1)
-        e_av = ((m.body_w[f] - bw) ** 2).sum(-1).mean(-1)
+        e_lv = ((rbv - bv) ** 2).sum(-1).mean(-1)
+        e_av = ((rbw - bw) ** 2).sum(-1).mean(-1)
         e_rp = ((rp - p) ** 2).sum(-1)
         e_ro = rot_angle_sq(rR, R)
         r_track = (
@@ -201,7 +202,7 @@ class MDP:
         alive = (1 - torch.sigmoid((e_z - self.cfg.term_height) / tz)) * (1 - torch.sigmoid((e_tilt - self.cfg.term_tilt) / tt))
         return 1 - alive
 
-    def critic_features(self, S, f, xi) -> torch.Tensor:
+    def critic_features(self, S, f, xi, ref_body_p=None) -> torch.Tensor:
         """Critic input: invariant state, goal, sim context, and robot-vs-reference errors."""
         m = self.motion
         p, R, v, w, q, qd = S
@@ -209,9 +210,10 @@ class MDP:
         Ht = H.transpose(-1, -2)
         rp, rR = m.root_p[f], m.root_R[f]
         bp = self.kin.forward(p, R, v, w, q, qd)[0]
+        rbp = m.body_reference(f, positions_only=True)[0] if ref_body_p is None else ref_body_p
         dR = yaw_mat(R @ rR.transpose(-1, -2))
         anchor = torch.cat((p[..., :2], rp[..., 2:3]), -1)
-        ref_bp = anchor.unsqueeze(-2) + ((dR.unsqueeze(-3) @ (m.body_p[f] - rp.unsqueeze(-2)).unsqueeze(-1)).squeeze(-1))
+        ref_bp = anchor.unsqueeze(-2) + ((dR.unsqueeze(-3) @ (rbp - rp.unsqueeze(-2)).unsqueeze(-1)).squeeze(-1))
         e_body = (Ht.unsqueeze(-3) @ (ref_bp - bp).unsqueeze(-1)).squeeze(-1).flatten(-2)
         e_root = (Ht @ (rp - p).unsqueeze(-1)).squeeze(-1)
         rel = mat_to_6d(R.transpose(-1, -2) @ rR)

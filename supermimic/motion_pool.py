@@ -25,6 +25,9 @@ class MotionPool(MotionLib):
     FRAME_FIELDS = ("root_p", "root_R", "root_v", "root_w", "q", "qd",
                     "body_p", "body_R", "body_v", "body_w", "root_v_local", "root_w_local", "root_gz")
 
+    BODY_FIELDS = ("body_p", "body_R", "body_v", "body_w")
+    GPU_FIELDS = tuple(k for k in FRAME_FIELDS if k not in ("body_p", "body_R", "body_v", "body_w"))
+
     def __init__(self, files, kin, device, *, active_ratio=.3, replace_ratio=.25, seed=0,
                  stats_cache=".cache/motion_pool", state=None):
         if not 0 < active_ratio <= 1 or not 0 <= replace_ratio <= 1:
@@ -32,6 +35,9 @@ class MotionPool(MotionLib):
         if not files or any(not f.endswith(".npz") for f in files):
             raise ValueError("The rotating pool needs validated named NPZ motions")
         self.files, self.kin, self.device = list(files), kin, device
+        self.body_storage = "cpu"
+        self._num_tracked = len(kin.tracked_idx)
+        self._body_widths = tuple(self._num_tracked*n for n in (3,9,3,3))
         self.active_ratio, self.replace_ratio = active_ratio, replace_ratio
         self.rng = np.random.default_rng(seed)
         self.catalog_names = [Path(f).stem for f in files]
@@ -94,12 +100,13 @@ class MotionPool(MotionLib):
         # Only staging batches are bounded; there is no capacity cap on the active pool.
         for b in range(0, len(missing), 128):
             block = missing[b:b + 128]
-            lib = MotionLib([self.files[i] for i in block], self.kin, self.device)
+            lib = MotionLib([self.files[i] for i in block], self.kin, self.device, body_storage="gpu")
             for j, cid in enumerate(block):
                 s, n = int(lib.clip_start[j]), int(lib.clip_len[j])
                 if n != int(self.catalog_len[cid]):
                     raise ValueError(f"Metadata frame count does not match loader: {self.files[cid]}")
-                self._cache[cid] = {k: getattr(lib, k)[s:s+n].to("cpu", copy=True) for k in self.FRAME_FIELDS}
+                self._cache[cid] = {k: getattr(lib, k)[s:s+n].to("cpu", copy=True) for k in self.GPU_FIELDS}
+                self._cache[cid]["_body"] = torch.cat([getattr(lib,k)[s:s+n].flatten(1) for k in self.BODY_FIELDS], -1).cpu()
             del lib
             loaded = min(b+len(block), len(missing))
             if loaded % 2048 == 0 or loaded == len(missing):
@@ -121,7 +128,7 @@ class MotionPool(MotionLib):
         self.clip_end = self.clip_len.cumsum(0) - 1
         self.clip_start = self.clip_end + 1 - self.clip_len
         self.num_frames = int(self.clip_len.sum())
-        for k in self.FRAME_FIELDS:
+        for k in self.GPU_FIELDS:
             setattr(self, k, torch.cat([self._cache[i][k] for i in ids]).to(self.device))
         self.clip_id = torch.repeat_interleave(torch.arange(len(ids), device=self.device), self.clip_len)
         # A single (clip,local-bin) identity survives every resident-layout rebuild.
@@ -146,9 +153,39 @@ class MotionPool(MotionLib):
         self.ever_active[self.active_ids] = True
         # Reference lengths change after a refresh. Keep compiled indexing polymorphic.
         if torch.device(self.device).type == "cuda":
-            for k in (*self.FRAME_FIELDS, "clip_id", "clip_start", "clip_end", "clip_len", "frame_bin"):
+            for k in (*self.GPU_FIELDS, "clip_id", "clip_start", "clip_end", "clip_len", "frame_bin"):
                 torch._dynamo.mark_dynamic(getattr(self, k), 0)
+        self._host_clip_end = self.clip_end.cpu()
+        self._host_clip_start = self.clip_start.cpu()
         self.last_refresh_s = time.monotonic() - t0
+
+    @torch.compiler.disable
+    def body_reference(self, f, positions_only=False):
+        """Gather cached float32 bodies by clip; avoid duplicating the full CPU library.
+
+        Pool rotation preserves the cached values. Only this transfer batch is pinned,
+        and reward/critic kernels receive the GPU result outside torch.compile.
+        """
+        index = f.detach().to("cpu").reshape(-1)
+        width = self._body_widths[0] if positions_only else sum(self._body_widths)
+        host = torch.empty((index.numel(), width), dtype=torch.float32,
+                           pin_memory=torch.device(self.device).type == "cuda")
+        clips = torch.bucketize(index, self._host_clip_end, right=False)
+        order = clips.argsort()
+        unique, counts = torch.unique_consecutive(clips[order], return_counts=True)
+        offset = 0
+        for local_clip, count in zip(unique.tolist(), counts.tolist()):
+            rows = order[offset:offset+count]
+            local_frames = index[rows] - self._host_clip_start[local_clip]
+            cached = self._cache[self.resident_ids[local_clip]]["_body"][:, :width]
+            host.index_copy_(0, rows, cached.index_select(0, local_frames))
+            offset += count
+        batch = host.to(self.device, non_blocking=True)
+        if positions_only:
+            return batch.reshape(*f.shape, self._num_tracked, 3), None, None, None
+        p, R, v, w = batch.split(self._body_widths, -1)
+        return (p.reshape(*f.shape, self._num_tracked, 3), R.reshape(*f.shape, self._num_tracked, 3, 3),
+                v.reshape(*f.shape, self._num_tracked, 3), w.reshape(*f.shape, self._num_tracked, 3))
 
     def record_starts(self, bins):
         ids = self.resident_global[self.bin_clip[bins]]
@@ -255,7 +292,7 @@ class MotionPool(MotionLib):
         return dict(pool_active=len(self.active_ids), pool_resident=len(self.resident_ids),
                     pool_legacy=len(self.resident_ids)-len(self.active_ids), pool_frames=self.num_frames,
                     pool_gpu_gib=sum(getattr(self, k).numel()*getattr(self, k).element_size()
-                                     for k in self.FRAME_FIELDS) / 2**30,
+                                     for k in self.GPU_FIELDS) / 2**30,
                     pool_cpu_gib=sum(x.numel()*x.element_size() for v in self._cache.values() for x in v.values()) / 2**30,
                     pool_refresh_s=self.last_refresh_s, pool_loaded=self.last_loaded,
                     pool_catalog=len(self.files), pool_selected=int(self.ever_active.sum()),

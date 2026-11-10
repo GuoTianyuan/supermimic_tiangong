@@ -375,19 +375,31 @@ def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
     return S1, a, o_hist, f1, motion.goal(f1, K, GOAL_DROP)
 
 
-def _reward_term(S, f, a, a_prev, qd_prev):
-    return mdp.reward(S, f, a, a_prev, qd_prev=qd_prev), mdp.soft_termination(S, f)
+def _reward_term(S, f, a, a_prev, qd_prev, ref_bodies):
+    return mdp.reward(S, f, a, a_prev, qd_prev=qd_prev, ref_bodies=ref_bodies), mdp.soft_termination(S, f)
 
 
-def _critic_input(S, f, xi_n, g):
-    return torch.cat((mdp.critic_features(S, f, xi_n), g), -1)
+def _critic_input(S, f, xi_n, g, ref_body_p=None):
+    return torch.cat((mdp.critic_features(S, f, xi_n, ref_body_p=ref_body_p), g), -1)
 
 
 wm_rollout = torch.compile(_wm_rollout)
 wm_err = torch.compile(_wm_err)
 imag_step = torch.compile(_imag_step)
-reward_term = torch.compile(_reward_term)
-critic_input_c = torch.compile(_critic_input)
+reward_term_c = torch.compile(_reward_term)
+critic_input_gpu = torch.compile(_critic_input)
+
+
+def reward_term(S, f, a, a_prev, qd_prev):
+    # One batched transfer for the entire H x B imagined trajectory, outside torch.compile.
+    reference = motion.body_reference(f)
+    return reward_term_c(S, f, a, a_prev, qd_prev, reference)
+
+
+def critic_input_c(S, f, xi_n, g):
+    # Critic errors only use body positions, so do not transfer rotations or velocities.
+    reference_p = motion.body_reference(f, positions_only=True)[0]
+    return critic_input_gpu(S, f, xi_n, g, reference_p)
 
 
 def lr_at(it: int) -> float:

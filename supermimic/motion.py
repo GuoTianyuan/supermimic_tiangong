@@ -41,8 +41,12 @@ def motion_group(name: str) -> str:
 
 
 class MotionLib:
-    def __init__(self, files: list[str], kin: G1Kinematics, device: str, src_fps: float = 30.0):
+    def __init__(self, files: list[str], kin: G1Kinematics, device: str, src_fps: float = 30.0,
+                 body_storage: str = "cpu"):
         self.device = device
+        if body_storage not in ("cpu", "gpu"):
+            raise ValueError(f"unknown body_storage {body_storage!r}")
+        self.kin, self.body_storage = kin, body_storage
         self.names = [os.path.splitext(os.path.basename(f))[0] for f in files]
         ps, qs, js, vs = [], [], [], []
         lens = []
@@ -94,21 +98,7 @@ class MotionLib:
         cat = lambda xs: torch.cat(xs).to(device)  # noqa: E731
         self.root_p, self.root_R, self.root_v, self.root_w = cat(root_p), cat(root_R), cat(root_v), cat(root_w)
         self.q, self.qd = cat(jq), cat(jqd)
-        with torch.no_grad():
-            bp, bR, bv, bw = [], [], [], []
-            for s in range(0, self.num_frames, 65536):
-                e = min(s + 65536, self.num_frames)
-                out = kin.forward(self.root_p[s:e], self.root_R[s:e], self.root_v[s:e], self.root_w[s:e], self.q[s:e], self.qd[s:e])
-                bp.append(out[0]), bR.append(out[1]), bv.append(out[2]), bw.append(out[3])
-            # Keep identical concatenated tensors; release each temporary chunk list immediately.
-            self.body_p = torch.cat(bp)
-            bp.clear()
-            self.body_R = torch.cat(bR)
-            bR.clear()
-            self.body_v = torch.cat(bv)
-            bv.clear()
-            self.body_w = torch.cat(bw)
-            bw.clear()
+        self._cache_body_reference()
         # per-frame static goal parts: q, qd, root velocities in the root frame
         Rt = self.root_R.transpose(-1, -2)
         self.root_v_local = (Rt @ self.root_v.unsqueeze(-1)).squeeze(-1)
@@ -130,6 +120,59 @@ class MotionLib:
             s = bin_start[b]
             e = min(s + BIN_FRAMES, int(self.clip_end[c]) + 1)
             self.frame_bin[s:e] = b
+
+    def _cache_body_reference(self):
+        """Use the original 65536-frame GPU FK batches, storing identical float32 outputs on CPU.
+
+        Preserving the precomputation batch size also preserves TF32's shape-dependent rounding.
+        Root/joint trajectories and all sampling/goal tables remain on the GPU.
+        """
+        with torch.no_grad():
+            if self.body_storage == "cpu":
+                self._num_tracked = len(self.kin.tracked_idx)
+                self._body_widths = tuple(self._num_tracked * n for n in (3, 9, 3, 3))
+                # The whole library can exceed 70 GiB; only transfer batches need pinned memory.
+                self._body_cache = torch.empty((self.num_frames, sum(self._body_widths)), dtype=torch.float32,
+                                              device="cpu")
+                for s in range(0, self.num_frames, 65536):
+                    e = min(s + 65536, self.num_frames)
+                    out = self.kin.forward(*self.ref_state(slice(s, e)))
+                    packed = torch.cat([x.flatten(1) for x in out], -1)
+                    self._body_cache[s:e].copy_(packed)
+                return
+            bp, bR, bv, bw = [], [], [], []
+            for s in range(0, self.num_frames, 65536):
+                e = min(s + 65536, self.num_frames)
+                out = self.kin.forward(self.root_p[s:e], self.root_R[s:e], self.root_v[s:e], self.root_w[s:e], self.q[s:e], self.qd[s:e])
+                bp.append(out[0]), bR.append(out[1]), bv.append(out[2]), bw.append(out[3])
+            # Keep identical concatenated tensors; release each temporary chunk list immediately.
+            self.body_p = torch.cat(bp)
+            bp.clear()
+            self.body_R = torch.cat(bR)
+            bR.clear()
+            self.body_v = torch.cat(bv)
+            bv.clear()
+            self.body_w = torch.cat(bw)
+            bw.clear()
+
+    @torch.compiler.disable
+    def body_reference(self, f: torch.Tensor, positions_only: bool = False):
+        """Gather a pinned CPU batch and transfer it before compiled reward/critic computation."""
+        if self.body_storage == "gpu":
+            if positions_only:
+                return self.body_p[f], None, None, None
+            return self.body_p[f], self.body_R[f], self.body_v[f], self.body_w[f]
+        index = f.detach().to("cpu").reshape(-1)
+        columns = self._body_cache[:, :self._body_widths[0]] if positions_only else self._body_cache
+        host = torch.empty((index.numel(), columns.shape[1]), dtype=columns.dtype,
+                           pin_memory=torch.device(self.device).type == "cuda")
+        torch.index_select(columns, 0, index, out=host)
+        batch = host.to(self.device, non_blocking=True)
+        if positions_only:
+            return batch.reshape(*f.shape, self._num_tracked, 3), None, None, None
+        p, R, v, w = batch.split(self._body_widths, -1)
+        return (p.reshape(*f.shape, self._num_tracked, 3), R.reshape(*f.shape, self._num_tracked, 3, 3),
+                v.reshape(*f.shape, self._num_tracked, 3), w.reshape(*f.shape, self._num_tracked, 3))
 
     @staticmethod
     def from_dir(path: str, kin: G1Kinematics, device: str, rank: int = 0, world: int = 1, exclude: str | None = None) -> MotionLib:

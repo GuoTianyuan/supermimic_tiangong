@@ -55,10 +55,15 @@ def main():
                 root_body_index=0, quaternion_format="wxyz", frames=n, fps=50.,
                 sha256=hashlib.sha256(f.read_bytes()).hexdigest())))
             files.append(str(f))
-        dense = MotionLib(files, kin, dev)
+        dense = MotionLib(files, kin, dev, body_storage="gpu")
         full = MotionPool(files, kin, dev, active_ratio=1, stats_cache=str(Path(tmp)/"stats"))
-        for k in MotionPool.FRAME_FIELDS:
+        for k in MotionPool.GPU_FIELDS:
             assert torch.equal(getattr(full, k), getattr(dense, k)), k
+        all_f = torch.arange(dense.num_frames,device=dev)
+        assert all(torch.equal(x,y) for x,y in zip(full.body_reference(all_f), dense.body_reference(all_f)))
+        full_2d=all_f[:60].reshape(6,10)
+        assert all(torch.equal(x,y) for x,y in zip(full.body_reference(full_2d),dense.body_reference(full_2d)))
+        assert torch.equal(full.body_reference(full_2d,True)[0],dense.body_reference(full_2d,True)[0])
         # At ratio1 the pool must reproduce the original adaptive-bin reset sampler exactly.
         def sampler(m):
             return SimpleNamespace(motion=m, bin_G=torch.arange(m.num_bins,device=dev)*.001,
@@ -117,7 +122,7 @@ def main():
         frames = replay.reference_frames().flatten()
         before_id = identity(frames)
         before_state = [x.clone() for x in pool.ref_state(frames)]
-        before_bodies = [getattr(pool,k)[frames].clone() for k in ("body_p","body_R","body_v","body_w")]
+        before_bodies = [x.clone() for x in pool.body_reference(frames)]
         before_goal = pool.goal(frames,10).clone()
         before_env = identity(env.f)
         before_return = env.bin_G[env.start_bin].clone()
@@ -129,7 +134,7 @@ def main():
         assert all(torch.equal(x,y) for x,y in zip(before_env,identity(env.f)))
         assert torch.equal(before_return,env.bin_G[env.start_bin])
         assert all(torch.equal(x,y) for x,y in zip(before_state,pool.ref_state(frames)))
-        assert all(torch.equal(x,getattr(pool,k)[frames]) for x,k in zip(before_bodies,("body_p","body_R","body_v","body_w")))
+        assert all(torch.equal(x,y) for x,y in zip(before_bodies,pool.body_reference(frames)))
         assert torch.equal(before_goal,pool.goal(frames,10))
         after = evaluate(frames)
         assert torch.equal(before[0],after[0]) and torch.equal(before[1],after[1])
@@ -148,7 +153,12 @@ def main():
         module=importlib.util.module_from_spec(spec)
         sys.modules[spec.name]=module
         spec.loader.exec_module(module)
-        old_mdp = module.MDP(kin,pool,q0,module.RewardCfg(**vars(mdp.cfg)))
+        class Bodies:
+            def __init__(self,i): self.i=i
+            def __getitem__(self,f): return pool.body_reference(f)[self.i]
+        proxy=SimpleNamespace(**{k:getattr(pool,k) for k in ("root_p","root_R","q")},
+                              **{k:Bodies(i) for i,k in enumerate(pool.BODY_FIELDS)})
+        old_mdp = module.MDP(kin,proxy,q0,module.RewardCfg(**vars(mdp.cfg)))
         state = tuple(x.clone().requires_grad_(True) for x in pool.ref_state(frames))
         r0 = old_mdp.reward(state,frames,aa,aprev,qd_prev=state[5])
         r1, terms = mdp.reward(state,frames,aa,aprev,terms=True,qd_prev=state[5])
@@ -165,9 +175,9 @@ def main():
         # Repeat refreshes with unchanged valid replay. Every old reference must remain exact.
         compiled_calls = 0
         if a.compile:
-            def query(f):
+            def query(f, ref):
                 S = pool.ref_state(f)
-                return mdp.reward(S,f,aa,aprev,qd_prev=S[5]), mdp.critic_features(S,f,xi),pool.goal(f,10)
+                return mdp.reward(S,f,aa,aprev,qd_prev=S[5],ref_bodies=ref), mdp.critic_features(S,f,xi,ref_body_p=ref[0]),pool.goal(f,10)
             query_c=torch.compile(query, fullgraph=True)
         for _ in range(10):
             pool.refresh(env,replay)
@@ -175,8 +185,9 @@ def main():
             assert all(torch.equal(x,y) for x,y in zip(before_id,identity(frames)))
             assert torch.equal(before_goal,pool.goal(frames,10))
             if a.compile:
-                c=query_c(frames)
-                e=query(frames)
+                refs=pool.body_reference(frames)
+                c=query_c(frames,refs)
+                e=query(frames,refs)
                 for x,y in zip(c,e):
                     torch.testing.assert_close(x,y,rtol=3e-4,atol=5e-5)
                 compiled_calls += 1
