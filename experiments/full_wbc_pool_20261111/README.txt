@@ -81,3 +81,10 @@ args.json/检查点新增 self_collisions 字段；启动信息明确打印开�
 已完成实际接触过滤核查：默认站姿无自接触；200个随机关节姿态，开启38个有自接触、关闭0个。
 同一30k Actor在64环境×200步的全DR测试中，两组均0次非有限状态重置，开启组实际观察到自接触。
 这些检查验证开关/数值可运行，不证明策略质量已适应新的碰撞约束；大规模学习与正式续训验证另存 artifacts/self_collision_20261111。
+
+
+2026-11-11 分支命名更新
+当前自碰撞full WBC基线分支改名为 bc_100hz。
+原名 experiment/control-100hz-pool-self-collision，保留为上述历史记录中的名称。
+GitHub remote：github = git@github.com:wenhan10086/supermimic.git。
+本次仅调整Git分支名与实验配置中的分支标签，训练参数、run名和已保存权重不变。

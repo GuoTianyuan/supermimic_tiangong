@@ -1,6 +1,6 @@
 {
   "run": "tg_full_wbc_100hz_pool_w12_h48_selfcol_s0_20261111",
-  "branch": "experiment/control-100hz-pool-self-collision",
+  "branch": "bc_100hz",
   "base_commit": "a8266ac",
   "comparison_branch": "experiment/control-100hz-w12-h48",
   "comparison_commit": "4d90866",
