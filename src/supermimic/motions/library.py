@@ -11,9 +11,9 @@ import re
 import numpy as np
 import torch
 
-from .kinematics import G1Kinematics
-from .robot import JOINT_NAMES, ROBOT_NAME
-from .rotations import mat_to_6d, quat_slerp, quat_to_mat, so3_log, yaw_mat
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.robots import JOINT_NAMES, ROBOT_NAME
+from supermimic.utils.rotations import mat_to_6d, quat_slerp, quat_to_mat, so3_log, yaw_mat
 
 CONTROL_DT = 0.01  # 100 Hz policy, replay transitions and world-model steps
 BIN_FRAMES = round(1.0 / CONTROL_DT)  # retain 1 s return-based reset bins

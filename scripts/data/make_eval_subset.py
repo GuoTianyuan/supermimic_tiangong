@@ -1,6 +1,6 @@
 """Stratified evaluation subset of a motion directory, for supermimic/evaluate.py --motion_dir.
 
-Up to ``--per_group`` clips of every motion group (the name before ``__``, see supermimic.motion.motion_group),
+Up to ``--per_group`` clips of every motion group (the name before ``__``, see supermimic.motions.library.motion_group),
 drawn with a fixed seed and symlinked with their validation metadata into ``--out``.
 
     python scripts/data/make_eval_subset.py --src data/wbc_full --out data/wbc_full_eval --per_group 32
@@ -16,7 +16,7 @@ import random
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from supermimic.motion import motion_group  # noqa: E402
+from supermimic.motions.library import motion_group  # noqa: E402
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--src", required=True)

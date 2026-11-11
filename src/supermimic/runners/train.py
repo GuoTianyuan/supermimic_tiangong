@@ -14,10 +14,9 @@ import json
 import math
 import os
 import signal
-import sys
 import time
 
-from supermimic.paths import REPO_ROOT
+from supermimic.utils.paths import REPO_ROOT
 from supermimic.configs.train import build_parser
 
 REPO = str(REPO_ROOT)
@@ -49,22 +48,22 @@ import copy
 
 import torch
 import torch.distributed as dist
-import torch.nn as nn
-import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
-from supermimic.buffer import ReplayBuffer
-from supermimic.diagnostics import (CRITIC_FIELDS, EXTRA_FIELDS, POOL_FIELDS, WM_FIELDS, CriticMetrics, RealMetrics, WorldModelMetrics, wm_error_summary)
-from supermimic.motion_pool import MotionPool
-from supermimic.dr import LATE_TERMS, DRCfg, curriculum_scale, describe, describe_scale, parse_curriculum, parse_terms
-from supermimic.env import TrackingSim, make_sim
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import (ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD, MDP, OBS_A_PREV, OBS_DIM, XI_DIM,
-                            invariant_features, normalize_xi, reward_cfg, unflatten_state)  # fmt: skip
-from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
-import supermimic.networks as networks
-from supermimic.networks import Critic, Policy, WorldModel
-from supermimic.robot import DEFAULT_MOTION, G1_CFG, G1_JOINT_NAMES, action_scale, default_joint_pos_list, set_dynamics
+from supermimic.learners.wm_learner import build_world_model_learner
+from supermimic.learners.policy_learner import build_policy_learner
+from supermimic.storage.replay_buffer import ReplayBuffer
+from supermimic.utils.metrics import CRITIC_FIELDS, EXTRA_FIELDS, POOL_FIELDS, WM_FIELDS, CriticMetrics, RealMetrics, WorldModelMetrics
+from supermimic.motions.pool import MotionPool
+from supermimic.envs.domain_randomization import LATE_TERMS, DRCfg, curriculum_scale, describe, describe_scale, parse_curriculum, parse_terms
+from supermimic.envs.tracking_env import TrackingSim
+from supermimic.envs.sim_context import make_sim
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD, MDP, OBS_A_PREV, OBS_DIM, XI_DIM, normalize_xi, reward_cfg, unflatten_state
+from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
+import supermimic.models.common as networks
+from supermimic.models import Critic, Policy, WorldModel
+from supermimic.robots import DEFAULT_MOTION, G1_CFG, G1_JOINT_NAMES, action_scale, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
 dr_curriculum = parse_curriculum(args.dr_curriculum)
 if dr_curriculum and not parse_terms(args.dr):
@@ -148,7 +147,7 @@ pi = Policy(OBS_DIM, GOAL_DIM, hist=Hh, soft_clip_actions=args.act_soft_clip).to
 # scaled so that the normalizers still freeze at the same iteration
 for norm in (pi.obs_norm, pi.goal_norm, wm.in_norm, *wm.output_normalizers()):
     norm.max_count *= WORLD * args.num_envs / 4096
-# The extended xi entries (src/supermimic/dr.py) lie in [-1, 1] and stay constant until a --dr_curriculum stage
+# The extended xi entries (src/supermimic/envs/domain_randomization.py) lie in [-1, 1] and stay constant until a --dr_curriculum stage
 # reaches them; running statistics would be frozen around that constant by then.
 N_XI_EXT = dr.xi_dim - XI_DIM
 XI_EXT_STATS = (torch.zeros(N_XI_EXT, device=dev), torch.full((N_XI_EXT,), 3**-0.5, device=dev))
@@ -221,7 +220,7 @@ if ck is not None:
         raise ValueError("Checkpoint robot does not match --robot")
     ck_dr = ck["args"].get("dr", "")
     if bool(parse_terms(ck_dr)) != bool(dr.terms):
-        # all term sets share one xi layout (src/supermimic/dr.py), which differs from the paper's 33 entries
+        # all term sets share one xi layout (src/supermimic/envs/domain_randomization.py), which differs from the paper's 33 entries
         raise ValueError(f"Checkpoint was trained {f'with --dr {ck_dr}' if ck_dr else 'without --dr'}; resume it "
                          f"{'with some --dr terms' if ck_dr else 'without --dr'} (the xi layouts differ)")  # fmt: skip
     ck_xi = DRCfg(parse_terms(ck_dr)).xi_dim
@@ -260,27 +259,6 @@ if ck is not None and "critic_targ" in ck:
 del ck
 
 
-def sync_grads(m: nn.Module):
-    """Average gradients over ranks before clipping, so every rank takes the same optimizer step."""
-    if WORLD == 1:
-        return
-    ps = list(m.parameters())
-    flat = torch.cat([(p.grad if p.grad is not None else torch.zeros_like(p)).reshape(-1) for p in ps])
-    dist.all_reduce(flat, op=dist.ReduceOp.AVG)
-    for p, g in zip(ps, flat.split([p.numel() for p in ps])):
-        p.grad = g.view_as(p)
-
-
-def clip_finite_grads(m: nn.Module, max_norm: float):
-    """clip_grad_norm_, and zero gradients when their norm is not finite (without a host sync, unlike
-    the policy's skipped step): a NaN step would reach every rank's weights."""
-    gn = nn.utils.clip_grad_norm_(m.parameters(), max_norm)
-    bad = ~torch.isfinite(gn)
-    for p in m.parameters():
-        if p.grad is not None:
-            p.grad.masked_fill_(bad, 0.0)
-
-
 def stop_requested() -> bool:
     """A stop signal on any rank stops all ranks after the same iteration."""
     if WORLD == 1:
@@ -290,74 +268,10 @@ def stop_requested() -> bool:
     return bool(flag)
 
 
-# per-component floors on the error normalization (pos, rot, lin vel, ang vel, q, qd increments)
-ERR_FLOOR = torch.cat((torch.full((3,), 3e-3), torch.full((3,), 5e-3), torch.full((3,), 2e-2), torch.full((3,), 5e-2),
-                       torch.full((29,), 3e-3), torch.full((29,), 5e-2))).to(dev)  # fmt: skip
-
-
-def _wm_rollout(s, a, a_prev, xi):
-    S = unflatten_state(s[:, 0])
-    preds = []
-    for j in range(args.wm_window):
-        S = wm.step(S, a[:, j], normalize_xi(xi[:, j]), a_prev[:, j])
-        preds.append(S)
-    return tuple(torch.stack([P[i] for P in preds], 1) for i in range(6))  # (B, k, ...)
-
-
-def _wm_err(S_hat, s1, mask):
-    std = torch.maximum(wm.error_std(), ERR_FLOOR)
-    raw = wm.state_error(S_hat, unflatten_state(s1))
-    squared = (raw / std) ** 2  # (B, k, D)
-    summary = wm_error_summary(raw, squared, mask, std, ERR_FLOOR)
-    e = squared.mean(-1)
-    return (e * mask).sum() / s1.shape[0], e[:, -1], e[:, 0], summary
-
-
-def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
-    a = pi(o_hist, g)
-    S1 = wm.step(S, a, xi_n, a_prev)
-    f1 = f + 1
-    o1 = mdp.add_noise(mdp.obs(S1, a.detach() if args.detach_a_prev else a, xi, f1))
-    o_hist = torch.cat((o_hist[:, 1:], o1.unsqueeze(1)), 1)
-    return S1, a, o_hist, f1, motion.goal(f1, K, GOAL_DROP)
-
-
-def _reward_term(S, f, a, a_prev, qd_prev, ref_bodies):
-    return mdp.reward(S, f, a, a_prev, qd_prev=qd_prev, ref_bodies=ref_bodies), mdp.soft_termination(S, f)
-
-
-def _critic_input(S, f, xi_n, g, ref_body_p=None):
-    return torch.cat((mdp.critic_features(S, f, xi_n, ref_body_p=ref_body_p), g), -1)
-
-
-wm_rollout = torch.compile(_wm_rollout)
-wm_err = torch.compile(_wm_err)
-imag_step = torch.compile(_imag_step)
-reward_term_c = torch.compile(_reward_term)
-critic_input_gpu = torch.compile(_critic_input)
-
-
-def reward_term(S, f, a, a_prev, qd_prev):
-    # One batched transfer for the entire H x B imagined trajectory, outside torch.compile.
-    reference = motion.body_reference(f)
-    return reward_term_c(S, f, a, a_prev, qd_prev, reference)
-
-
-def critic_input_c(S, f, xi_n, g):
-    # Critic errors only use body positions, so do not transfer rotations or velocities.
-    reference_p = motion.body_reference(f, positions_only=True)[0]
-    return critic_input_gpu(S, f, xi_n, g, reference_p)
-
-
 def lr_at(it: int) -> float:
     if it >= args.lr_decay_iters:
         return args.lr * 0.03
     return args.lr * (0.03 + 0.97 * 0.5 * (1 + math.cos(math.pi * it / args.lr_decay_iters)))
-
-
-def set_requires_grad(m: nn.Module, flag: bool):
-    for p in m.parameters():
-        p.requires_grad_(flag)
 
 
 from supermimic.runners.progress import CSV_FIELDS, SMOOTH_KEYS, build_tb_tags, print_progress, _hms
@@ -365,140 +279,9 @@ TB_TAGS = build_tb_tags(args.wm_window)
 
 
 # ------------------------------------------------------------------------------------------------
-def wm_update():
-    w = buffer.sample_windows(args.wm_batch, args.wm_window)
-    S_hat = wm_rollout(w["s"], w["a"], w["a_prev"], w["xi"])
-    loss, e_last, e_first, wm_summary = wm_err(S_hat, w["s1"], w["mask"])
-    wm_metrics.update(wm_summary)
-    opt_wm.zero_grad(set_to_none=True)
-    loss.backward()
-    sync_grads(wm)
-    clip_finite_grads(wm, 1.0)
-    opt_wm.step()
-    m = w["mask"][:, -1]
-    return loss.detach() / args.wm_window, (e_last.detach() * m).sum() / m.sum().clamp(min=1), e_first.detach().mean()
-
-
-def sample_valid_starts(B: int):
-    return buffer.sample_valid_starts(B, Hh, HZ, motion.clip_id, motion.clip_end)
 
 
 PROFILE = bool(int(os.environ.get("SM_PROFILE", "0")))
-
-
-def policy_update():
-    if PROFILE:
-        torch.cuda.synchronize(); tq0 = time.time()
-    s, h = sample_valid_starts(args.pi_batch)
-    S = unflatten_state(s["s"])
-    xi, f, a_prev = s["xi"], s["f"], s["a_prev"]
-    xi_n = normalize_xi(xi)
-    with torch.no_grad():
-        o_hist = mdp.obs(unflatten_state(h["s"]), h["a_prev"], h["xi"], h["f"])
-    o_hist = mdp.add_history_noise(o_hist, h["noise_source"])
-    set_requires_grad(wm, False)
-    set_requires_grad(critic, False)
-    B = args.pi_batch
-    g0 = motion.goal(f, K, GOAL_DROP)
-    g = g0
-    S0 = S
-    Ss, As, Aps, Fs, Gs = [], [], [], [], []
-    for t in range(HZ):
-        Aps.append(a_prev)
-        S, a_prev, o_hist, f, g = imag_step(S, o_hist, a_prev, f, xi, xi_n, g)
-        Ss.append(S), As.append(a_prev), Fs.append(f), Gs.append(g)
-    flat = lambda xs: torch.stack(xs).flatten(0, 1)  # noqa: E731  (H*B, ...)
-    S_all = tuple(flat([St[i] for St in Ss]) for i in range(6))
-    f_all = flat(Fs)
-    qd_prev = flat([S0[5]] + [St[5] for St in Ss[:-1]])
-    r, d = reward_term(S_all, f_all, flat(As), flat(Aps), qd_prev)
-    r, d = r.view(HZ, B), d.view(HZ, B)
-    alive = torch.cumprod(1 - d, 0)  # c_{t+1}
-    c_t = torch.cat((torch.ones(1, B, device=dev), alive[:-1]), 0)
-    disc = args.gamma ** torch.arange(HZ, device=dev, dtype=torch.float32).unsqueeze(-1)
-    J = (disc * c_t * r).sum(0)
-    c = alive[-1]
-    r_sum = (c_t * r).detach().sum(0)
-    rews, dones = r.detach(), d.detach()
-    v_end = torch.zeros(B, device=dev)
-    if not args.no_critic:
-        # the clamp at the largest possible return stops the policy from chasing critic overestimates
-        v_end = critic(_critic_input(S, f, xi_n, g))
-        J = J + (args.gamma**HZ) * c * v_end.clamp(-G_MAX, G_MAX)
-        v_end = v_end.detach()
-    loss = -J.mean()
-    if PROFILE:
-        torch.cuda.synchronize(); tq1 = time.time()
-    opt_pi.zero_grad(set_to_none=True)
-    loss.backward()
-    sync_grads(pi)
-    if PROFILE:
-        torch.cuda.synchronize(); tq2 = time.time()
-    gn = nn.utils.clip_grad_norm_(pi.parameters(), 1.0)
-    nn.utils.clip_grad_value_(pi.parameters(), 0.1)
-    if torch.isfinite(gn):
-        opt_pi.step()
-    set_requires_grad(wm, True)
-    set_requires_grad(critic, True)
-    # ---------------- critic: GAE(lambda) targets over the imagined transitions ----------------
-    v_mse = torch.zeros((), device=dev)
-    if not args.no_critic:
-        with torch.no_grad():
-            S_c = tuple(torch.cat((S0[i].unsqueeze(0), torch.stack([St[i].detach() for St in Ss])), 0).flatten(0, 1) for i in range(6))
-            f_c = torch.cat((s["f"].unsqueeze(0), torch.stack(Fs)), 0).flatten()
-            g_c = torch.cat((g0.unsqueeze(0), torch.stack(Gs)), 0).flatten(0, 1)
-            xi_c = xi_n.unsqueeze(0).expand(HZ + 1, -1, -1).flatten(0, 1)
-            X = critic_input_c(S_c, f_c, xi_c, g_c).view(HZ + 1, B, -1)
-        critic.norm.update(X)
-        with torch.no_grad():
-            V = critic_targ(X).clamp(-G_MAX, G_MAX)
-            R = V[-1]
-            targets = []
-            for t in range(HZ - 1, -1, -1):
-                R = rews[t] + args.gamma * (1 - dones[t]) * ((1 - args.lam) * V[t + 1] + args.lam * R)
-                targets.append(R)
-            targets = torch.stack(targets[::-1]).clamp(-G_MAX, G_MAX)  # (H, B)
-        # weighted by the probability of being alive: states after a soft termination never bootstrap anything
-        Xf, Yf, Wf = X[:-1].reshape(-1, X.shape[-1]), targets.reshape(-1), c_t.detach().reshape(-1)
-        n = Xf.shape[0]
-        mb = n // args.critic_minibatches
-        for _ in range(args.critic_epochs):
-            perm = torch.randperm(n, device=dev)
-            for i in range(args.critic_minibatches):
-                idx = perm[i * mb : (i + 1) * mb]
-                v, y, w = critic(Xf[idx]), Yf[idx], Wf[idx]
-                w_sum = w.sum().clamp(min=1e-6)
-                huber = F.huber_loss(v, y, reduction="none", delta=1.0)
-                v_loss = (w * huber).sum() / w_sum
-                critic_metrics.update(v, y, w, huber)
-                opt_v.zero_grad(set_to_none=True)
-                v_loss.backward()
-                sync_grads(critic)
-                clip_finite_grads(critic, 1.0)
-                opt_v.step()
-        v_mse = (w * (v.detach() - y) ** 2).sum() / w_sum
-        with torch.no_grad():
-            for p_targ, p in zip(critic_targ.net.parameters(), critic.net.parameters()):
-                p_targ.lerp_(p, args.critic_tau)
-    if PROFILE:
-        torch.cuda.synchronize()
-        print(f"[prof] imagine fwd {1e3*(tq1-tq0):.0f} ms | bwd {1e3*(tq2-tq1):.0f} ms | critic {1e3*(time.time()-tq2):.0f} ms", flush=True)
-    v_stats = (v_end.mean(), v_end.max(), (v_end > G_MAX).float().mean())
-    return loss.detach(), v_mse, (r_sum / HZ / MAX_STEP_REWARD).mean(), gn.detach(), c.mean().detach(), *v_stats
-
-
-def a_prev_gain(n: int = 256) -> torch.Tensor:
-    """Largest singular value of da_t / da_{t-1} through the newest observation, at n buffer states:
-    above 1 the imagined action loop (and its BPTT gradient) can grow from step to step."""
-    s, h = buffer.sample_starts(n, Hh)
-    with torch.no_grad():
-        o = mdp.add_history_noise(
-            mdp.obs(unflatten_state(h["s"]), h["a_prev"], h["xi"], h["f"]), h["noise_source"])
-    x = o[:, -1, OBS_A_PREV : OBS_A_PREV + 29].clone().requires_grad_(True)
-    newest = torch.cat((o[:, -1, :OBS_A_PREV], x, o[:, -1, OBS_A_PREV + 29 :]), -1)
-    a = pi(torch.cat((o[:, :-1], newest.unsqueeze(1)), 1), motion.goal(s["f"], K, GOAL_DROP))
-    jac = torch.stack([torch.autograd.grad(a[:, j].sum(), x, retain_graph=j < 28)[0] for j in range(29)], 1)
-    return torch.linalg.matrix_norm(jac, ord=2)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -512,6 +295,11 @@ with launch_simulation(sim_cfg, args):
     critic_metrics = CriticMetrics(dev)
     wm_metrics = WorldModelMetrics(dev, G1_JOINT_NAMES)
     obs_hist = torch.zeros(args.num_envs, Hh, OBS_DIM, device=dev)
+    wm_learner = build_world_model_learner(args=args, wm=wm, opt_wm=opt_wm, buffer=buffer,
+        wm_metrics=wm_metrics, dev=dev, world=WORLD)
+    policy_learner = build_policy_learner(args=args, wm=wm, pi=pi, critic=critic, critic_targ=critic_targ,
+        opt_pi=opt_pi, opt_v=opt_v, buffer=buffer, mdp=mdp, motion=motion,
+        critic_metrics=critic_metrics, dev=dev, GOAL_DROP=GOAL_DROP, G_MAX=G_MAX, world=WORLD, PROFILE=PROFILE)
 
     @torch.no_grad()
     def collect(n_steps: int, stats: dict):
@@ -663,12 +451,12 @@ with launch_simulation(sim_cfg, args):
         if prof:
             torch.cuda.synchronize(); tp1 = time.time()
         for _ in range(args.wm_batches):
-            l, e8, e1 = wm_update()
+            l, e8, e1 = wm_learner.update()
         if prof:
             torch.cuda.synchronize(); tp2 = time.time()
         agg["wm"].append(l), agg["wm8"].append(e8), agg["wm1"].append(e1)
         if it >= args.wm_only_iters:
-            pl, vl, ir, gn, surv, vm, vx, vo = policy_update()
+            pl, vl, ir, gn, surv, vm, vx, vo = policy_learner.update()
             if prof:
                 torch.cuda.synchronize(); tp3 = time.time()
                 print(f"[prof] collect {1e3*(tp1-tp0):.0f} ms ({n} steps) | wm {1e3*(tp2-tp1):.0f} ms | policy+critic {1e3*(tp3-tp2):.0f} ms", flush=True)
@@ -693,7 +481,7 @@ with launch_simulation(sim_cfg, args):
             t_log, steps_log = now, sim_steps
             # losses and per-step rewards are averaged over ranks, maxima taken over ranks; episode statistics are pooled
             vals = [mean(agg[k]) for k in ("wm", "wm8", "pi", "v", "ir", "gn", "surv")] + [mean(stats["r"])]
-            gain = a_prev_gain() if it >= args.wm_only_iters else torch.zeros(1, device=dev)
+            gain = policy_learner.action_loop_gain() if it >= args.wm_only_iters else torch.zeros(1, device=dev)
             vals += [mean(agg["vm"]), mean(agg["vo"]), float(gain.median())] + [mean(stats[k]) for k in SMOOTH_KEYS]
             maxes = [top(agg["vx"]), top(agg["gn"]), float(gain.max())]
             pooled = [total(stats["ep_len"]), total(stats["ep_ret"]), total(stats["ep_count"]), total(stats["term"]), total(stats["done"]),

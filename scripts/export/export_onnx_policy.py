@@ -43,13 +43,13 @@ import onnx
 import torch
 import torch.nn as nn
 
-import supermimic.networks as networks
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import ACTION_CLIP, OBS_DIM
-from supermimic.motion import CONTROL_DT, MotionLib
-from supermimic.networks import Policy
-from supermimic.robot import JOINT_NAMES, action_scale, default_joint_pos_list
-from supermimic.tiangong3 import motor_params, set_dynamics
+import supermimic.models.common as networks
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, OBS_DIM
+from supermimic.motions.library import CONTROL_DT, MotionLib
+from supermimic.models import Policy
+from supermimic.robots import JOINT_NAMES, action_scale, default_joint_pos_list
+from supermimic.robots.tiangong3 import motor_params, set_dynamics
 
 
 class Deploy(nn.Module):

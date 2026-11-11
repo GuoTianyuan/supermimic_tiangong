@@ -5,7 +5,7 @@ observation or action noise. A motion fails if the rollout triggers the training
 Normalized return is the undiscounted reward sum divided by its maximum attainable value.
 
 ``--dr`` keeps randomization, for deployment checks: ``base`` is the training randomization of
-friction, joint offsets and torso COM plus observation noise, and src/supermimic/dr.py terms (or ``all``)
+friction, joint offsets and torso COM plus observation noise, and src/supermimic/envs/domain_randomization.py terms (or ``all``)
 come on top of it. Each motion then plays ``--repeats`` times with its own draws, and every checkpoint
 evaluated with the same ``--seed`` (several ``--ckpt``, or a run's checkpoints) meets the same draws.
 
@@ -21,7 +21,7 @@ import os
 import sys
 import time
 
-from supermimic.paths import REPO_ROOT
+from supermimic.utils.paths import REPO_ROOT
 
 REPO = str(REPO_ROOT)
 from isaaclab.app import add_launcher_args, launch_simulation
@@ -35,7 +35,7 @@ parser.add_argument("--motion_dir", type=str, default=None, help="Motion directo
 parser.add_argument("--every", type=int, default=1, help="evaluate every n-th checkpoint")
 parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
 parser.add_argument("--dr", type=str, default="none", help="none: nominal | base: training randomization and observation "
-                    "noise | base plus src/supermimic/dr.py terms (comma list, or all)")  # fmt: skip
+                    "noise | base plus src/supermimic/envs/domain_randomization.py terms (comma list, or all)")  # fmt: skip
 parser.add_argument("--repeats", type=int, default=1, help="rollouts per motion, each with its own random draws (with --dr)")
 parser.add_argument("--seed", type=int, default=0, help="seed of the random draws, the same for every checkpoint")
 parser.add_argument("--dynamics", choices=["default", "dexevt"], default=None,
@@ -47,14 +47,15 @@ os.environ["SUPERMIMIC_ROBOT"] = args.robot
 import numpy as np
 import torch
 
-import supermimic.networks as networks
-from supermimic.dr import DRCfg, describe, parse_terms
-from supermimic.env import TrackingSim, make_sim
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MAX_STEP_REWARD, OBS_DIM, MDP, reward_cfg
-from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, motion_group, parse_goal_drop
-from supermimic.networks import Policy
-from supermimic.robot import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
+import supermimic.models.common as networks
+from supermimic.envs.domain_randomization import DRCfg, describe, parse_terms
+from supermimic.envs.tracking_env import TrackingSim
+from supermimic.envs.sim_context import make_sim
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import MAX_STEP_REWARD, OBS_DIM, MDP, reward_cfg
+from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, motion_group, parse_goal_drop
+from supermimic.models import Policy
+from supermimic.robots import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
 
 
@@ -126,7 +127,7 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         a = pi(hist, motion.goal(env.f, K, goal_drop))
         alive = ~env.done_eval.clone()
         if record:  # the first rollout of every motion
-            from supermimic.rotations import mat_to_quat
+            from supermimic.utils.rotations import mat_to_quat
 
             traj["root_p"].append(S[0][:C].cpu()), traj["root_quat"].append(mat_to_quat(S[1][:C]).cpu())
             traj["q"].append(S[4][:C].cpu()), traj["qd"].append(S[5][:C].cpu()), traj["a"].append(a[:C].cpu())

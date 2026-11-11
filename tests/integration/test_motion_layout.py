@@ -9,9 +9,9 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/"src"))
 import mujoco
 import numpy as np
 import torch
-from supermimic.kinematics import G1Kinematics
-from supermimic.motion import BIN_FRAMES, CONTROL_DT, MotionLib
-from supermimic.robot import JOINT_NAMES, MJCF_PATH, TRACKED_BODIES
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.motions.library import BIN_FRAMES, CONTROL_DT, MotionLib
+from supermimic.robots import JOINT_NAMES, MJCF_PATH, TRACKED_BODIES
 
 ap=argparse.ArgumentParser(description=__doc__)
 ap.add_argument('--motion_file',required=True)

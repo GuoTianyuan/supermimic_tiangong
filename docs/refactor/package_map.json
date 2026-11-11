@@ -1,0 +1,51 @@
+{
+  "base_commit": "ce8955e",
+  "files": {
+    "src/supermimic/buffer.py": "src/supermimic/storage/replay_buffer.py",
+    "src/supermimic/diagnostics.py": "src/supermimic/utils/metrics.py",
+    "src/supermimic/dr.py": "src/supermimic/envs/domain_randomization.py",
+    "src/supermimic/kinematics.py": "src/supermimic/robots/kinematics.py",
+    "src/supermimic/motion.py": "src/supermimic/motions/library.py",
+    "src/supermimic/motion_pool.py": "src/supermimic/motions/pool.py",
+    "src/supermimic/sampling.py": "src/supermimic/motions/sampling.py",
+    "src/supermimic/rotations.py": "src/supermimic/utils/rotations.py",
+    "src/supermimic/paths.py": "src/supermimic/utils/paths.py",
+    "src/supermimic/recording.py": "src/supermimic/utils/recording.py",
+    "src/supermimic/tiangong3.py": "src/supermimic/robots/tiangong3.py",
+    "src/supermimic/env.py": "src/supermimic/envs/tracking_env.py",
+    "src/supermimic/mdp.py": "src/supermimic/tasks/tracking/mdp/context.py",
+    "src/supermimic/networks.py": "src/supermimic/models/__init__.py",
+    "src/supermimic/robot.py": "src/supermimic/robots/__init__.py"
+  },
+  "split_modules": {
+    "networks.py": [
+      "models/common.py",
+      "models/world_model.py",
+      "models/policy.py",
+      "models/critic.py"
+    ],
+    "mdp.py": [
+      "tasks/tracking/config.py",
+      "tasks/tracking/mdp/context.py",
+      "tasks/tracking/mdp/actions.py",
+      "tasks/tracking/mdp/state.py",
+      "tasks/tracking/mdp/observations.py",
+      "tasks/tracking/mdp/rewards.py",
+      "tasks/tracking/mdp/terminations.py"
+    ],
+    "runners/train.py": [
+      "learners/wm_learner.py",
+      "learners/policy_learner.py",
+      "learners/critic_learner.py",
+      "learners/learner_utils.py"
+    ],
+    "robot.py": [
+      "robots/g1.py",
+      "robots/__init__.py"
+    ],
+    "env.py": [
+      "envs/sim_context.py",
+      "envs/tracking_env.py"
+    ]
+  }
+}

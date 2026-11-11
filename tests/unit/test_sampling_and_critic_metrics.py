@@ -30,14 +30,14 @@ def main():
     p.add_argument('--output',type=Path)
     args=p.parse_args(); root=args.repo.resolve()
     torch.set_num_threads(1); torch.manual_seed(11)
-    pkg=types.ModuleType('_tg_sampling_test'); pkg.__path__=[str(root/'src/supermimic')]
+    pkg=types.ModuleType('supermimic'); pkg.__path__=[str(root/'src/supermimic')]
     sys.modules[pkg.__name__]=pkg
-    stub=types.ModuleType(pkg.__name__+'.mdp')
+    stub=types.ModuleType(pkg.__name__+'.tasks.tracking.mdp')
     stub.STATE_DIM=71;stub.XI_DIM=33;stub.MAX_STEP_REWARD=.05
     sys.modules[stub.__name__]=stub
-    sampling=load(pkg.__name__+'.sampling',root/'src/supermimic/sampling.py')
-    buffer=load(pkg.__name__+'.buffer',root/'src/supermimic/buffer.py')
-    diagnostics=load(pkg.__name__+'.diagnostics',root/'src/supermimic/diagnostics.py')
+    sampling=__import__("supermimic.motions.sampling", fromlist=["_"])
+    buffer=__import__("supermimic.storage.replay_buffer", fromlist=["_"])
+    diagnostics=__import__("supermimic.utils.metrics", fromlist=["_"])
     report={}
     initial=torch.tensor([1.,2.,3.,4.,5.])
     bins=torch.tensor([3,1,3,3,1]); returns=torch.tensor([1.,-2.,7.,4.,8.])
@@ -54,7 +54,7 @@ def main():
     torch.testing.assert_close(actual[unique],.8*initial[unique]+.2*target,rtol=0,atol=0)
     report['duplicate_returns_order_invariant_unique_and_empty_updates']=True
     # Execute the actual env.step bookkeeping block with a minimal fake env.
-    tree=ast.parse((root/'src/supermimic/env.py').read_text())
+    tree=ast.parse((root/'src/supermimic/envs/tracking_env.py').read_text())
     env=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='TrackingSim')
     step=next(n for n in env.body if isinstance(n,ast.FunctionDef) and n.name=='step')
     block=next(n for n in step.body if isinstance(n,ast.If) and ast.unparse(n.test)=='len(ids) > 0')
@@ -149,10 +149,9 @@ def main():
     for k,val in m0.flush().items(): assert abs(val-actual[k])<1e-7
     report['critic_weighted_all_minibatch_and_rank_sum_aggregation']=True
 
-    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/runners/progress.py').read_text()
+    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/learners/wm_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/policy_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/critic_learner.py').read_text()+'\n'+(root/'src/supermimic/runners/progress.py').read_text()
     def critic_loop(text):
-        fn=next(n for n in ast.parse(text).body if isinstance(n,ast.FunctionDef) and n.name=='policy_update')
-        loop=next(n for n in ast.walk(fn) if isinstance(n,ast.For) and ast.unparse(n.iter)=='range(args.critic_epochs)')
+        loop=next(n for n in ast.walk(ast.parse(text)) if isinstance(n,ast.For) and ast.unparse(n.iter)=='range(args.critic_epochs)')
         return compile(ast.Module(body=[loop],type_ignores=[]),'<actual critic fit loop>','exec')
     if args.legacy_train:
         class Critic(torch.nn.Module):
@@ -183,7 +182,7 @@ def main():
         report['actual_20_minibatch_updates_bitwise_unchanged_and_metrics_match']=True
     assert 'legacy_last_minibatch_mse' in source and 'extra.update(critic_metrics.flush())' in source
     assert '*EXTRA_FIELDS, *CRITIC_FIELDS,' in source
-    for file in (root/'src/supermimic').glob('*.py'):ast.parse(file.read_text(),filename=str(file))
+    for file in (root/'src/supermimic').rglob('*.py'):ast.parse(file.read_text(),filename=str(file))
     report['scope']='CPU source-level numerical/regression checks; no real simulator, CUDA or multi-rank runtime test'
     result=json.dumps(report,indent=2)+'\n';print(result)
     if args.output:args.output.parent.mkdir(parents=True,exist_ok=True);args.output.write_text(result)

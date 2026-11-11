@@ -1,7 +1,7 @@
 """Training CLI schema; importing it does not initialize Isaac Lab or CUDA."""
 import argparse
 import os
-from supermimic.paths import REPO_ROOT
+from supermimic.utils.paths import REPO_ROOT
 
 REPO = str(REPO_ROOT)
 
@@ -68,7 +68,7 @@ def build_parser(add_launcher_args=None):
     parser.add_argument("--robot", choices=["g1", "tiangong3"], default=os.environ.get("SUPERMIMIC_ROBOT", "g1"))
     parser.add_argument("--dr", type=str, default="", help="extra domain randomization for deployment (tiangong3): comma list of "
                         "pd, push, mass, armature, joint_friction, delay, contact, or all (all but contact; all,contact "
-                        "adds it); see src/supermimic/dr.py")  # fmt: skip
+                        "adds it); see src/supermimic/envs/domain_randomization.py")  # fmt: skip
     parser.add_argument("--dr_curriculum", type=str, default="", help="A,B: no --dr terms before iteration A, all but "
                         "push and delay from A, all from B")  # fmt: skip
     parser.add_argument("--dr_ramp", type=int, default=2000, help="iterations over which each --dr_curriculum stage widens "

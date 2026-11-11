@@ -4,11 +4,11 @@ from pathlib import Path
 import os, sys, time
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 import torch
-from supermimic.kinematics import G1Kinematics
-from supermimic.motion import MotionLib
-from supermimic.mdp import MDP, flatten_state, unflatten_state, normalize_xi, OBS_DIM
-from supermimic.networks import WorldModel
-from supermimic.robot import default_joint_pos_list
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.motions.library import MotionLib
+from supermimic.tasks.tracking.mdp import MDP, flatten_state, unflatten_state, normalize_xi, OBS_DIM
+from supermimic.models import WorldModel
+from supermimic.robots import default_joint_pos_list
 torch.backends.cuda.matmul.allow_tf32 = True
 dev = "cuda:0"
 kin = G1Kinematics(dev)

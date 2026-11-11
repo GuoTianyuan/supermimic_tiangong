@@ -13,7 +13,7 @@ import sys
 import subprocess
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-from supermimic.recording import recording_dt, render_indices
+from supermimic.utils.recording import recording_dt, render_indices
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 # use the NVIDIA EGL vendor (GPU) rather than Mesa's CPU rasterizer when the image does not register it

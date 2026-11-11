@@ -10,7 +10,7 @@ def repository_root() -> Path:
         if not (root / "assets-manifest.json").is_file():
             raise FileNotFoundError(f"SUPERMIMIC_ROOT has no assets-manifest.json: {root}")
         return root
-    source_root = Path(__file__).resolve().parents[2]
+    source_root = Path(__file__).resolve().parents[3]
     if (source_root / "assets-manifest.json").is_file():
         return source_root
     # A non-editable wheel may be used with a separate checkout holding assets.

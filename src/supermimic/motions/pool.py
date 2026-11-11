@@ -17,8 +17,8 @@ import time
 import numpy as np
 import torch
 
-from .motion import BIN_FRAMES, CONTROL_DT, MotionLib
-from .robot import JOINT_NAMES, ROBOT_NAME
+from supermimic.motions.library import BIN_FRAMES, CONTROL_DT, MotionLib
+from supermimic.robots import JOINT_NAMES, ROBOT_NAME
 
 
 class MotionPool(MotionLib):

@@ -3,11 +3,11 @@ DexEVT config in cheerleading_competition (robots/dex_evt.py).
 
 Effort/velocity limits come from the supplied URDF, except the parallel ankle.
 This uses implicit PD without a torque-speed model; actuator delay, joint
-friction and gain/mass/armature errors are opt-in randomization (src/supermimic/dr.py).
+friction and gain/mass/armature errors are opt-in randomization (src/supermimic/envs/domain_randomization.py).
 """
 import os
 
-from .paths import DATA_ROOT
+from supermimic.utils.paths import DATA_ROOT
 import re
 import xml.etree.ElementTree as ET
 
@@ -79,7 +79,7 @@ def action_scale(name):
 def default_joint_pos_list():
     return [next((v for pat,v in DEFAULT_JOINT_POS.items() if re.fullmatch(pat,n)),0.) for n in JOINT_NAMES]
 
-# Rigid segments for mass randomization (src/supermimic/dr.py): the root and the child link of each moving
+# Rigid segments for mass randomization (src/supermimic/envs/domain_randomization.py): the root and the child link of each moving
 # joint. Links on fixed joints (IMUs, cameras, head, TCPs) scale with the segment they hang from.
 _parent = {j.find('child').get('link'): (j.find('parent').get('link'), j.get('type')) for j in _tree.findall('joint')}
 MASS_SEGMENTS = [l.get('name') for l in _tree.findall('link') if l.get('name') not in _parent] + \

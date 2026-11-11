@@ -11,8 +11,8 @@ ROOT=Path(__file__).resolve().parents[3];sys.path.insert(0,str(ROOT/"src"))
 import argparse,json,runpy
 from types import SimpleNamespace
 import torch
-from supermimic.kinematics import G1Kinematics
-from supermimic.motion_pool import MotionPool
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.motions.pool import MotionPool
 
 p=argparse.ArgumentParser();p.add_argument('--rank',type=int,default=0);p.add_argument('--envs',type=int,default=4096);p.add_argument('--batch',type=int,default=4096);p.add_argument('--run',required=True);a=p.parse_args()
 ART=Path('/media/supermimic/artifacts/full_wbc_pool_20261111')

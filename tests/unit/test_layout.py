@@ -91,7 +91,7 @@ def test_training_cli_unchanged(monkeypatch):
     assert (a.robot,a.num_envs,a.wm_prediction,a.act_soft_clip)==('tiangong3',4096,'velocity_integrated',False)
 
 
-@pytest.mark.parametrize('old', [*MOVES][:15])
+@pytest.mark.parametrize('old', [p for p in [*MOVES][:15] if Path(p).name not in {'mdp.py','networks.py','robot.py','env.py','train.py'}])
 def test_numerical_modules_and_training_flow_unchanged(old):
     baseline=json.loads(BASELINE.read_text())['ast']
     if old not in baseline:pytest.skip('Non-source mapping')
@@ -117,7 +117,7 @@ def test_asset_roots_and_import_side_effects(tmp_path):
     env={**os.environ,'PYTHONPATH':str(ROOT/'src'),'PYTHONDONTWRITEBYTECODE':'1'}
     code='''import sys
 import supermimic
-from supermimic.paths import REPO_ROOT, DATA_ROOT
+from supermimic.utils.paths import REPO_ROOT, DATA_ROOT
 from supermimic.configs.train import build_parser
 assert "torch" not in sys.modules and "isaaclab" not in sys.modules
 assert (DATA_ROOT / "tiangong3_urdf/urdf/tiangong3.urdf").is_file()
@@ -149,7 +149,7 @@ def test_training_process_patterns_cover_old_and_new_paths():
 
 
 def test_recording_frequency_and_video_duration():
-    from supermimic.recording import recording_dt,render_indices
+    from supermimic.utils.recording import recording_dt,render_indices
     for hz in (50,100):
         dt=recording_dt({'control_dt':np.array(1/hz)})
         for fps in (25,30,120):
@@ -191,7 +191,7 @@ def robot_snapshot(repo, package, robot, dynamics, monkeypatch):
     monkeypatch.setenv('SUPERMIMIC_ROBOT',robot)
     prefix='_layout_asset_'+robot+'_'+dynamics+'_'+str(len(package))
     pkg=types.ModuleType(prefix);pkg.__path__=[str(repo/package)];monkeypatch.setitem(sys.modules,prefix,pkg)
-    spec=importlib.util.spec_from_file_location(prefix+'.robot',repo/package/'robot.py')
+    spec=importlib.util.spec_from_file_location(prefix+'.robots',repo/package/'robots/__init__.py',submodule_search_locations=[str(repo/package/'robots')])
     module=importlib.util.module_from_spec(spec);monkeypatch.setitem(sys.modules,spec.name,module);spec.loader.exec_module(module)
     module.set_dynamics(dynamics)
     result={

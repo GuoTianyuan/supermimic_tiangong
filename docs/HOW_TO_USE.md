@@ -78,9 +78,9 @@ cd /media/roy/supermimic_vibed
 
 | 文件 | 内容 |
 |---|---|
-| `src/supermimic/tiangong3.py` | `DYNAMICS`、`motor_params()`（dexevt 时脚踝 55 N·m、armature 0.031）、`set_dynamics()` |
+| `src/supermimic/robots/tiangong3.py` | `DYNAMICS`、`motor_params()`（dexevt 时脚踝 55 N·m、armature 0.031）、`set_dynamics()` |
 | `src/supermimic/dr.py` | `DRCfg.for_dynamics()`：dexevt 时 `ankle_armature=(0.002, 0.06)`、`viscous_friction=True` |
-| `src/supermimic/env.py` | `_apply_startup_dr()`：`viscous_friction` 为真时把摩擦也写成粘滞摩擦 |
+| `src/supermimic/envs/tracking_env.py` | `_apply_startup_dr()`：`viscous_friction` 为真时把摩擦也写成粘滞摩擦 |
 | `scripts/training/train.py` | `--dynamics` 参数，存进 checkpoint 和 `logs/<run>/args.json` |
 | `scripts/evaluation/evaluate.py`、`scripts/evaluation/sim2sim_mujoco.py` | 不写 `--dynamics` 时自动读 run 或 checkpoint 里的值 |
 

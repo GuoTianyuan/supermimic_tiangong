@@ -11,11 +11,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 os.environ["SUPERMIMIC_ROBOT"] = "tiangong3"
 import torch
 
-from supermimic.buffer import ReplayBuffer
-from supermimic.dr import DRCfg, parse_terms
-from supermimic.mdp import flatten_state
-from supermimic.networks import WorldModel
-from supermimic.robot import default_joint_pos_list, set_dynamics
+from supermimic.storage.replay_buffer import ReplayBuffer
+from supermimic.envs.domain_randomization import DRCfg, parse_terms
+from supermimic.tasks.tracking.mdp import flatten_state
+from supermimic.models import WorldModel
+from supermimic.robots import default_joint_pos_list, set_dynamics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, required=True)

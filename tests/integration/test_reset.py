@@ -6,11 +6,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 from isaaclab.app import add_launcher_args, launch_simulation
 parser = argparse.ArgumentParser(); add_launcher_args(parser); args = parser.parse_args()
 import torch
-from supermimic.env import TrackingSim, make_sim
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MDP
-from supermimic.motion import MotionLib
-from supermimic.robot import default_joint_pos_list
+from supermimic.envs.tracking_env import TrackingSim
+from supermimic.envs.sim_context import make_sim
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import MDP
+from supermimic.motions.library import MotionLib
+from supermimic.robots import default_joint_pos_list
 dev = "cuda:0"
 kin = G1Kinematics(dev); motion = MotionLib.from_dir(str(Path(__file__).resolve().parents[2] / "data" / "lafan1_g1"), kin, dev)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev))
@@ -28,4 +29,4 @@ with launch_simulation(sim_cfg, args):
     S = env.state()
     print("after update(0):", [round((a - b).abs().max().item(), 4) for a, b in zip(S, ref)])
     out = env.step(torch.zeros(64, 29, device=dev))
-    print("step s vs ref:", [round((a - b).abs().max().item(), 4) for a, b in zip(env.mdp.__class__.__mro__ and __import__('supermimic.mdp', fromlist=['x']).unflatten_state(out['s']), ref)])
+    print("step s vs ref:", [round((a - b).abs().max().item(), 4) for a, b in zip(env.mdp.__class__.__mro__ and __import__('supermimic.tasks.tracking.mdp', fromlist=['x']).unflatten_state(out['s']), ref)])

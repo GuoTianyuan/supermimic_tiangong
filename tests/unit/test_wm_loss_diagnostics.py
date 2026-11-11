@@ -32,15 +32,15 @@ def main():
     p.add_argument('--output', type=Path)
     args = p.parse_args(); root = args.repo.resolve()
     torch.set_num_threads(1); torch.manual_seed(41)
-    pkg = types.ModuleType('_tg_wm_metrics_test'); pkg.__path__ = [str(root/'src/supermimic')]
+    pkg = types.ModuleType('supermimic'); pkg.__path__ = [str(root/'src/supermimic')]
     sys.modules[pkg.__name__] = pkg
-    for name, fields in [('kinematics', {'G1Kinematics': object}),
-                         ('motion', {'CONTROL_DT': .01, 'MotionLib': object})]:
+    for name, fields in [('robots.kinematics', {'G1Kinematics': object}),
+                         ('motions.library', {'CONTROL_DT': .01, 'MotionLib': object})]:
         mod = types.ModuleType(pkg.__name__+'.'+name); mod.__dict__.update(fields); sys.modules[mod.__name__] = mod
-    rot = load(pkg.__name__+'.rotations', root/'src/supermimic/rotations.py')
-    mdp = load(pkg.__name__+'.mdp', root/'src/supermimic/mdp.py')
-    networks = load(pkg.__name__+'.networks', root/'src/supermimic/networks.py')
-    diag = load(pkg.__name__+'.diagnostics', root/'src/supermimic/diagnostics.py')
+    rot = __import__("supermimic.utils.rotations", fromlist=["_"])
+    mdp = __import__("supermimic.tasks.tracking.mdp", fromlist=["_"])
+    networks = __import__("supermimic.models", fromlist=["_"])
+    diag = __import__("supermimic.utils.metrics", fromlist=["_"])
     names = [f'joint_{i}' for i in range(29)]
     report = {}
     raw = torch.randn(4, 3, 70, requires_grad=True)
@@ -98,9 +98,9 @@ def main():
     empty,empty_ch=metrics.flush(); assert all(v==0 for v in (*empty.values(),*empty_ch.values()))
     report['unequal_batches_masks_scales_rank_reduction_and_zero_valid'] = True
 
-    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/runners/progress.py').read_text(); tree=ast.parse(source)
+    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/learners/wm_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/policy_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/critic_learner.py').read_text()+'\n'+(root/'src/supermimic/runners/progress.py').read_text(); tree=ast.parse(source)
     def extract(name, namespace, parsed=tree):
-        node=next(n for n in parsed.body if isinstance(n,ast.FunctionDef) and n.name==name)
+        node=next(n for n in ast.walk(parsed) if isinstance(n,ast.FunctionDef) and n.name==name)
         exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual train '+name+'>','exec'),namespace)
         return namespace[name]
     floors=torch.cat([torch.full((n,),v) for n,v in [(3,.003),(3,.005),(3,.02),(3,.05),(29,.003),(29,.05)]])

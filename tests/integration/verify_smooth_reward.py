@@ -16,10 +16,10 @@ os.environ["SUPERMIMIC_ROBOT"] = "tiangong3"
 import numpy as np
 import torch
 
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MAX_STEP_REWARD, MDP, reward_cfg
-from supermimic.motion import CONTROL_DT
-from supermimic.robot import default_joint_pos_list, set_dynamics
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import MAX_STEP_REWARD, MDP, reward_cfg
+from supermimic.motions.library import CONTROL_DT
+from supermimic.robots import default_joint_pos_list, set_dynamics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--output", type=Path, required=True)

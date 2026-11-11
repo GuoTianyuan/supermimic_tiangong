@@ -26,7 +26,7 @@ from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
 from isaaclab.utils import configclass, instantiate, replace
 
-from supermimic.robot import G1_CFG
+from supermimic.robots import G1_CFG
 
 
 @configclass

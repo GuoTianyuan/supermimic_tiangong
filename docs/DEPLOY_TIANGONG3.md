@@ -38,7 +38,7 @@
 
 执行器：Kp/Kd、初始姿态和动作缩放对齐本机 DexEVT 配置
 `/home/eai/Dev/cheerleading_competition/cheerleading_competition/source/whole_body_tracking/whole_body_tracking/robots/dex_evt.py`，
-已独立写入 `src/supermimic/tiangong3.py`，没有运行时外部路径依赖。
+已独立写入 `src/supermimic/robots/tiangong3.py`，没有运行时外部路径依赖。
 - effort/velocity 限位取 URDF（与 DexEVT 一致）；并联踝每个串联轴上限 100 N·m（2 × 50 N·m 曲柄电机）。
 - 动作缩放 `0.5 * effort / Kp`，踝按 55 N·m 计算（与 DexEVT 的 `D3_ACTION_SCALE` 相同）。
 - armature 固定取 DexEVT 启动随机化范围的中点：0.031（0.002–0.06），踝 0.035（0.01–0.06）。

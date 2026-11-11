@@ -36,20 +36,20 @@ def main():
     support = (args.support_repo or root).resolve()
     torch.set_num_threads(1)
     torch.manual_seed(27)
-    pkg = types.ModuleType('_tg_contract_test')
+    pkg = types.ModuleType('supermimic')
     pkg.__path__ = [str(root/'src/supermimic'), str(support/'src/supermimic')]
     sys.modules[pkg.__name__] = pkg
     # Only these simulator-facing dependencies are stubs. All numerical methods
     # under test (including observations, rotations, replay and WM) are real code.
-    for name, fields in [('kinematics', {'G1Kinematics': object}),
-                         ('motion', {'CONTROL_DT': .01, 'MotionLib': object})]:
+    for name, fields in [('robots.kinematics', {'G1Kinematics': object}),
+                         ('motions.library', {'CONTROL_DT': .01, 'MotionLib': object})]:
         mod = types.ModuleType(f'{pkg.__name__}.{name}')
         mod.__dict__.update(fields)
         sys.modules[mod.__name__] = mod
-    rot = load(pkg.__name__+'.rotations', support/'src/supermimic/rotations.py')
-    mdp = load(pkg.__name__+'.mdp', root/'src/supermimic/mdp.py')
-    net = load(pkg.__name__+'.networks', root/'src/supermimic/networks.py')
-    bufmod = load(pkg.__name__+'.buffer', root/'src/supermimic/buffer.py')
+    rot = __import__("supermimic.utils.rotations", fromlist=["_"])
+    mdp = __import__("supermimic.tasks.tracking.mdp", fromlist=["_"])
+    net = __import__("supermimic.models", fromlist=["_"])
+    bufmod = __import__("supermimic.storage.replay_buffer", fromlist=["_"])
     B = 4
     def states():
         return (torch.randn(B,3), rot.so3_exp(.3*torch.randn(B,3)),
@@ -163,8 +163,8 @@ def main():
     assert torch.equal(noise,noise[:,-1:].expand_as(noise))
     report['history_h1_h2_h10_reset_buffer_wrap_and_unpadded_rng']=True
     # Parse modified training source; no simulator launch in this CPU test.
-    for path in (root/'src/supermimic').glob('*.py'): ast.parse(path.read_text(),filename=str(path))
-    source=(root/'src/supermimic/runners/train.py').read_text()
+    for path in (root/'src/supermimic').rglob('*.py'): ast.parse(path.read_text(),filename=str(path))
+    source='\n'.join((root/f'src/supermimic/{path}').read_text() for path in ['runners/train.py','learners/wm_learner.py','learners/policy_learner.py'])
     assert source.count('mdp.add_history_noise(')==2
     assert 'wm.update_output_normalization(S0, S1)' in source
     assert 'torch.maximum(wm.error_std(), ERR_FLOOR)' in source

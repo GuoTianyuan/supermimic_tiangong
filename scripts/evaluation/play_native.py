@@ -40,14 +40,15 @@ if not Path(args.motion).is_file():
     parser.error("--motion must point to one motion file")
 
 import torch
-import supermimic.networks as networks
-from supermimic.dr import DRCfg
-from supermimic.env import TrackingSim, make_sim
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MDP, MAX_STEP_REWARD, OBS_DIM, reward_cfg
-from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
-from supermimic.networks import Policy
-from supermimic.robot import default_joint_pos_list, set_dynamics
+import supermimic.models.common as networks
+from supermimic.envs.domain_randomization import DRCfg
+from supermimic.envs.tracking_env import TrackingSim
+from supermimic.envs.sim_context import make_sim
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import MDP, MAX_STEP_REWARD, OBS_DIM, reward_cfg
+from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
+from supermimic.models import Policy
+from supermimic.robots import default_joint_pos_list, set_dynamics
 
 if abs(CONTROL_DT - 1 / args.control_hz) > 1e-9:
     parser.error(f"This checkout uses {1 / CONTROL_DT:g} Hz, but --control-hz is {args.control_hz}")

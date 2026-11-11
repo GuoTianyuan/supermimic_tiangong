@@ -1,22 +1,27 @@
 # TG SuperMimic
 
 稳定基线为 `bc_100hz`，整理后的开发分支为 `bc_100hz_dev`。
-源码采用官方仓库的 `src/` 包结构，运行入口按 Isaac Lab 示例放在 `scripts/`。
+包内参考官方 SuperMimic 的 `models / learners / envs / runners` 分工，以及 BeyondMimic 的
+`robots / tasks/tracking/mdp` 分层。运行入口按 Isaac Lab 示例放在 `scripts/`。
 仿真仍是固定版本的 **Isaac Lab 3 kit-less / Newton / MuJoCo-Warp**；目录整理没有切换到 PhysX，
 也没有将算法改为 PPO 或 ManagerBasedRLEnv。
 
 ## 目录
 
 ```text
-src/supermimic/          可安装的 Python 包，公共 import 名称保持 supermimic.*
-  configs/train.py       参数定义与默认值，单独导入不启动仿真
-  runners/train.py       收集数据、WM、Actor/Critic 更新及 checkpoint
-  runners/evaluate.py    原生环境评测
-  runners/progress.py    终端、CSV、TensorBoard 格式
-  env.py / mdp.py        仿真环境、观测、奖励和终止
-  robot.py / tiangong3.py 机器人参数与选择
-  motion.py / motion_pool.py 参考动作和活跃池
-  networks.py / buffer.py / sampling.py  网络、replay、采样
+src/supermimic/
+  configs/              训练 CLI 参数和默认值
+  models/               WM、Policy、Critic 网络及 RunningNorm
+  learners/             WM 监督更新、Actor 想象更新、Critic 回归
+  envs/                 Isaac Lab 场景、仿真步进与 domain randomization
+  robots/               G1、Tiangong3 参数及 FK
+  motions/              motion 加载、插值、活跃池与起点采样
+  storage/              replay buffer
+  tasks/tracking/
+    config.py           跟踪任务的奖励与终止阈值配置
+    mdp/                state、actions、observations、rewards、terminations
+  runners/              训练调度、checkpoint、评测与日志输出
+  utils/                旋转数学、资产路径、录像和指标汇总
 scripts/
   training/             训练入口
   evaluation/           播放、评测、录像、分析
@@ -32,6 +37,7 @@ logs/                   运行结果，不纳入 Git
 ```
 
 旧 `tools/` 的每个文件都已归类，完整映射见 [path_map.json](docs/refactor/path_map.json)。
+包内旧模块的迁移、职责边界和验证记录见 [包结构说明](docs/refactor/PACKAGE_LAYOUT.md)。
 特定服务器/GPU/日期的容量测试和排队脚本归入 `experiments/full_wbc_pool_20261111/scripts/`。
 个人 `.vscode` 配置与日志不提交。
 

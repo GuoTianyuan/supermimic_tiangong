@@ -3,7 +3,7 @@
 Training runs Newton with the MuJoCo-Warp solver, implicit PD and 5 ms physics steps. Here the
 generated MJCF runs in MuJoCo with an explicit 1 kHz PD loop clipped to the effort limits and
 MuJoCo's default contact parameters, optionally with actuator delay, joint friction, gain errors and
-pushes. Observations, goals, rewards and termination are the training ones (src/supermimic/mdp.py), so
+pushes. Observations, goals, rewards and termination are the training ones (src/supermimic/tasks/tracking/mdp/context.py), so
 the scores compare with scripts/evaluation/evaluate.py. Without --ckpt the reference joint angles are played
 back open loop, which checks the physics setup alone.
 
@@ -29,14 +29,14 @@ import mujoco
 import numpy as np
 import torch
 
-import supermimic.networks as networks
-from supermimic.dr import DRCfg
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM, reward_cfg
-from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
-from supermimic.networks import Policy
-from supermimic.robot import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
-from supermimic.tiangong3 import get_dynamics, motor_params, set_dynamics
+import supermimic.models.common as networks
+from supermimic.envs.domain_randomization import DRCfg
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM, reward_cfg
+from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
+from supermimic.models import Policy
+from supermimic.robots import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
+from supermimic.robots.tiangong3 import get_dynamics, motor_params, set_dynamics
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--ckpt", default=None, help="policy checkpoint; without it the reference is played back open loop")
@@ -50,7 +50,7 @@ parser.add_argument("--kd_scale", type=float, default=1.0)
 parser.add_argument("--push", action="store_true", help="random root velocity changes every 1-5 s, as with train.py --dr push")
 parser.add_argument("--self_collision", action="store_true", help="training disables self-collision")
 parser.add_argument("--dynamics", choices=["default", "dexevt"], default=None,
-                    help="joint dynamics preset of src/supermimic/tiangong3.py (default: the checkpoint's)")
+                    help="joint dynamics preset of src/supermimic/robots/tiangong3.py (default: the checkpoint's)")
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--record", default=None, help="save trajectories (npz) for scripts/evaluation/render.py")
 parser.add_argument("--out", default=None, help="write the results as JSON")
@@ -107,7 +107,7 @@ if args.ckpt:
     pi = Policy(OBS_DIM, goal_frame_dim(GOAL_DROP) * K, hist=Hh, soft_clip_actions=ck["args"].get("act_soft_clip", False)).to(dev)
     pi.load_state_dict(ck["pi"])
     pi.eval()
-# previous action at reset, as in training (src/supermimic/env.py)
+# previous action at reset, as in training (src/supermimic/envs/tracking_env.py)
 RESET_A_PREV = ck["args"].get("reset_a_prev", "zero") if args.ckpt else "pose"
 
 

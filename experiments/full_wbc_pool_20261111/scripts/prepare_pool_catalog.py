@@ -10,9 +10,9 @@ import hashlib
 import json
 import numpy as np
 import torch
-from supermimic.motion_pool import MotionPool
-from supermimic.motion import CONTROL_DT
-from supermimic.robot import JOINT_NAMES,ROBOT_NAME
+from supermimic.motions.pool import MotionPool
+from supermimic.motions.library import CONTROL_DT
+from supermimic.robots import JOINT_NAMES,ROBOT_NAME
 ART=Path('/media/supermimic/artifacts/full_wbc_pool_20261111')
 DATA=Path('/media/supermimic/data/full_wbc_validated')
 

@@ -1,6 +1,6 @@
 """CSV/TensorBoard schema and terminal display, separate from learning updates."""
 import torch
-from supermimic.diagnostics import (CRITIC_FIELDS, EXTRA_FIELDS, REWARD_KEYS, WM_FIELDS,
+from supermimic.utils.metrics import (CRITIC_FIELDS, EXTRA_FIELDS, REWARD_KEYS, WM_FIELDS,
                                    WM_GROUPS, WM_TB_TAGS, WM_UNITS)
 
 # sm_native.sh reads some columns by position: new ones go at the end

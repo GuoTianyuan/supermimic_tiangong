@@ -1,0 +1,134 @@
+{
+  "verified_at": "2026-11-11T23:50:13.077721+08:00",
+  "base_commit": "ce8955e",
+  "branch": "bc_100hz_dev",
+  "unit_tests_passed": 36,
+  "numerical_function_ast_and_runner_schedule_preserved": true,
+  "runtime_checks": {
+    "train_resume": true,
+    "legacy_resume": true,
+    "physics": true,
+    "motion_pool": true,
+    "play_native": true,
+    "evaluate": true
+  },
+  "training": {
+    "train_smoke": {
+      "iteration": 35,
+      "optimizer_steps": {
+        "opt_wm": 35.0,
+        "opt_pi": 30.0,
+        "opt_v": 30.0
+      },
+      "all_parameters_optimizer_logs_finite": true,
+      "sim_nonfinite": 0,
+      "tensorboard_scalar_tags": 459
+    },
+    "legacy_resume": {
+      "iteration": 40,
+      "optimizer_steps": {
+        "opt_wm": 40.0,
+        "opt_pi": 35.0,
+        "opt_v": 35.0
+      },
+      "all_parameters_optimizer_logs_finite": true,
+      "sim_nonfinite": 0,
+      "tensorboard_scalar_tags": 459
+    }
+  },
+  "fixed_replay_update_comparison": {
+    "device": "cpu",
+    "updates": 3,
+    "fixed_replay": true,
+    "compile": false,
+    "loss_gradients_parameters_normalizers_optimizer_and_ema_bitwise_equal": true
+  },
+  "physics_and_onnx": {
+    "physics": {
+      "arrays_and_options": 509,
+      "different": [],
+      "bitwise_equal": true
+    },
+    "onnx": {
+      "samples": 8,
+      "max_abs_error_vs_torch": 2.0265579223632812e-06,
+      "weights_and_same_input_output_equal_to_pre_refactor_export": true
+    }
+  },
+  "pool": {
+    "device": "cuda:0",
+    "circular_replay_rows": 5,
+    "refreshes": 12,
+    "root_joint_and_cached_body_references_bitwise_equal": true,
+    "goals_rewards_critic_gradients_bitwise_equal": true,
+    "diagnostics_preserve_same_config_reward_and_gradients": true,
+    "full_catalog_action_stats_match": true,
+    "original_adaptive_sampler_preserved": true,
+    "only_active_clips_receive_starts": true,
+    "releases_unreferenced_legacy": true,
+    "checkpoint_pool_state_restored": true,
+    "compiled_refresh_calls": 10
+  },
+  "independent_short_training_comparison": {
+    "pi": {
+      "tensors": 26,
+      "bitwise_equal": false,
+      "max_abs_error": 0.12789082527160645,
+      "largest": [
+        [
+          "obs_norm.var",
+          0.12789082527160645
+        ],
+        [
+          "obs_norm.mean",
+          0.06890140473842621
+        ],
+        [
+          "goal_norm.mean",
+          0.015725135803222656
+        ],
+        [
+          "dec.6.weight",
+          0.005533497780561447
+        ],
+        [
+          "goal_norm.var",
+          0.004824578762054443
+        ]
+      ]
+    },
+    "wm": {
+      "tensors": 20,
+      "bitwise_equal": false,
+      "max_abs_error": 0.11651873588562012,
+      "largest": [
+        [
+          "in_norm.var",
+          0.11651873588562012
+        ],
+        [
+          "out_norm.var",
+          0.08623331785202026
+        ],
+        [
+          "in_norm.mean",
+          0.06573611497879028
+        ],
+        [
+          "net.0.weight",
+          0.0031043551862239838
+        ],
+        [
+          "net.3.weight",
+          0.002954009920358658
+        ]
+      ]
+    }
+  },
+  "limits": [
+    "Single GPU and small motion sample; no new multi-rank/full-WBC/long-run validation.",
+    "Separate compiled simulator training runs were not bitwise equal. The fixed-replay eager learner test verifies update equivalence; it does not establish deterministic end-to-end compiled training.",
+    "Native playback was exercised for one motion with an existing trained checkpoint; no hardware test."
+  ],
+  "logs": "logs/package_layout_20261112"
+}

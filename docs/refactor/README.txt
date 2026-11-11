@@ -1,3 +1,12 @@
+Current package layout (bc_100hz_dev)
+- The initial src-only relocation below has been superseded by a functional package split.
+- See PACKAGE_LAYOUT.md and package_map.json for the current architecture and import paths.
+- The old root modules (supermimic.networks/mdp/env/motion/robot/etc.) have been removed.
+  Repository callers now import their canonical models/learners/tasks/envs/motions/robots paths.
+- Historical validation below remains a record of the first relocation, not the latest results.
+
+Initial relocation record follows
+--------------------------------
 2026-11-11: refactor/isaaclab-layout, based on bc_100hz c0bd65f
 
 Scope and source references

@@ -20,14 +20,14 @@ from dataclasses import dataclass
 
 import torch
 
-from .mdp import XI_DIM
-from .robot import JOINT_NAMES, ROBOT_NAME
+from supermimic.tasks.tracking.mdp import XI_DIM
+from supermimic.robots import JOINT_NAMES, ROBOT_NAME
 
 TERMS = ("pd", "push", "mass", "armature", "joint_friction", "delay", "contact")
 ALL_TERMS = frozenset(TERMS) - {"contact"}  # what "all" meant when the checkpoints stored it
 
 if ROBOT_NAME == "tiangong3":
-    from .tiangong3 import MASS_SEGMENTS, mass_segment
+    from supermimic.robots.tiangong3 import MASS_SEGMENTS, mass_segment
 else:
     MASS_SEGMENTS, mass_segment = [], None
 
@@ -124,7 +124,7 @@ class DRCfg:
 
     @classmethod
     def for_dynamics(cls, terms: frozenset[str], dynamics: str = "default") -> "DRCfg":
-        """The ranges for a joint dynamics preset of src/supermimic/tiangong3.py."""
+        """The ranges for a joint dynamics preset of src/supermimic/robots/tiangong3.py."""
         if dynamics == "default":
             return cls(terms)
         if dynamics != "dexevt":

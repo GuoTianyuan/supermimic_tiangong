@@ -17,14 +17,14 @@ os.environ.setdefault("SUPERMIMIC_ROBOT", "tiangong3")
 import numpy as np
 import torch
 
-from supermimic.buffer import ReplayBuffer
-from supermimic.diagnostics import RealMetrics, REWARD_KEYS
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MDP, MAX_STEP_REWARD, flatten_state, reward_cfg
-from supermimic.motion import MotionLib
-from supermimic.motion_pool import MotionPool
-from supermimic.robot import JOINT_NAMES, default_joint_pos_list
-from supermimic.env import TrackingSim
+from supermimic.storage.replay_buffer import ReplayBuffer
+from supermimic.utils.metrics import RealMetrics, REWARD_KEYS
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import MDP, MAX_STEP_REWARD, flatten_state, reward_cfg
+from supermimic.motions.library import MotionLib
+from supermimic.motions.pool import MotionPool
+from supermimic.robots import JOINT_NAMES, default_joint_pos_list
+from supermimic.envs.tracking_env import TrackingSim
 
 
 def main():
@@ -147,8 +147,13 @@ def main():
         assert set(identity(f_draw)[0].cpu().tolist()) <= set(pool.active_ids)
         # Load the original reward from this branch's parent: diagnostics must not change values/gradients.
         original = Path(tmp)/"mdp_before.py"
-        original.write_bytes(subprocess.check_output(["git","-C",str(Path(__file__).resolve().parents[2]),
-                                                      "show","65c6d15:supermimic/mdp.py"]))
+        legacy = subprocess.check_output(["git", "-C", str(Path(__file__).resolve().parents[2]),
+                                          "show", "65c6d15:supermimic/mdp.py"]).decode()
+        # Only imports adapt to the new package. The historical reward stays intact.
+        for old, new in {"kinematics": "robots.kinematics", "motion": "motions.library",
+                         "rotations": "utils.rotations"}.items():
+            legacy = legacy.replace(f"from .{old} import", f"from supermimic.{new} import")
+        original.write_text(legacy)
         spec=importlib.util.spec_from_file_location("supermimic.mdp_before",original)
         module=importlib.util.module_from_spec(spec)
         sys.modules[spec.name]=module

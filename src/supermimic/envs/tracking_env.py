@@ -1,55 +1,32 @@
 """Motion-tracking simulator on Isaac Lab 3 (kit-less, Newton physics with the MuJoCo-Warp solver).
 
 The environment is a thin batched wrapper: it applies the joint setpoint, steps MuJoCo-Warp, labels
-the transition with the analytic reward/termination of :mod:`supermimic.mdp`, and resets episodes to
+the transition with the analytic reward/termination of :mod:`supermimic.tasks.tracking.mdp`, and resets episodes to
 reference-motion states drawn by return-based bin sampling (paper Appendix D.1).
 """
 
 from __future__ import annotations
 
-import math
-import os
 
-from .paths import DATA_ROOT
 import re
 
 import torch
 import warp as wp
-from isaaclab_newton.physics import MJWarpSolverCfg, NewtonCfg
 from newton import ModelFlags
 
-import isaaclab.sim as sim_utils
-from isaaclab.assets import AssetBaseCfg
-from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationContext
-from isaaclab.utils import configclass, instantiate, replace
+from isaaclab.utils import instantiate, replace
 
-from .dr import (ARMATURE, CONTACT, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, parse_terms,
-                 to_unit, uniform)  # fmt: skip
-from .mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, flatten_state
-from .motion import BIN_FRAMES, CONTROL_DT, MotionLib
-from .robot import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
-from .rotations import mat_to_quat, quat_to_mat, so3_exp
-from .sampling import update_bin_returns_
+from supermimic.envs.domain_randomization import ARMATURE, CONTACT, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, to_unit, uniform
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, flatten_state
+from supermimic.motions.library import BIN_FRAMES, CONTROL_DT, MotionLib
+from supermimic.robots import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
+from supermimic.utils.rotations import mat_to_quat, quat_to_mat, so3_exp
+from supermimic.motions.sampling import update_bin_returns_
+
+from .sim_context import TrackingSceneCfg
 
 SIM_STATE_BOUND = 1e3  # |entries| of a sane state (positions in m, velocities in m/s and rad/s)
-
-
-@configclass
-class TrackingSceneCfg(InteractiveSceneCfg):
-    ground = AssetBaseCfg(prim_path="/World/ground", spawn=sim_utils.GroundPlaneCfg(usd_path=str(DATA_ROOT / "ground" / "default_ground_plane.usda")))
-    robot = replace(G1_CFG, prim_path="{ENV_REGEX_NS}/Robot")
-
-
-def make_sim(device: str, args) -> SimulationContext:
-    # With actuator delay (args.dr, src/supermimic/dr.py) TrackingSim runs the four 2.5 ms physics substeps
-    # itself, so it can switch joint targets between them.
-    k = 4 if "delay" in parse_terms(getattr(args, "dr", None)) else 1
-    physics = NewtonCfg(
-        solver_cfg=MJWarpSolverCfg(njmax=500, nconmax=128, cone="pyramidal", integrator="implicitfast", use_mujoco_contacts=True),
-        num_substeps=4 // k,
-    )
-    return sim_utils.SimulationCfg(dt=CONTROL_DT / k, device=device, physics=physics)
 
 
 class TrackingSim:
@@ -99,7 +76,7 @@ class TrackingSim:
         self.alpha = torch.tensor([action_scale(n) for n in G1_JOINT_NAMES], device=dev)
         self.torso_id = self.robot.find_bodies(TORSO_BODY)[0][0]
 
-        # ---- sim context xi = [friction, joint offsets(29), torso com offset(3)] (+ src/supermimic/dr.py layout) ----
+        # ---- sim context xi = [friction, joint offsets(29), torso com offset(3)] (+ src/supermimic/envs/domain_randomization.py layout) ----
         self.xi = torch.zeros(self.N, self.dr.xi_dim, device=dev)
         self._setup_friction()
         if not self.randomize:
@@ -158,7 +135,7 @@ class TrackingSim:
         self._mu_view[:] = self.xi[:, :1]
         self.sim.backend_manager.add_model_change(ModelFlags.SHAPE_PROPERTIES)
 
-    # ------------------------------------------------------------------ src/supermimic/dr.py terms
+    # ------------------------------------------------------------------ src/supermimic/envs/domain_randomization.py terms
     def _setup_dr(self):
         """Every extended xi entry starts at its nominal value; then the start-up terms in use are drawn."""
         c, d, dev, N = self.dr, self.robot.data, self.device, self.N

@@ -4,7 +4,7 @@ from __future__ import annotations
 import torch
 import torch.distributed as dist
 
-from .mdp import MAX_STEP_REWARD
+from supermimic.tasks.tracking.mdp import MAX_STEP_REWARD
 
 REWARD_KEYS = ("reward_body_pos", "reward_body_ori", "reward_body_linvel", "reward_body_angvel",
                "reward_root_pos", "reward_root_ori", "pen_action_rate", "pen_joint_acc", "pen_joint_limit")

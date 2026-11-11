@@ -20,12 +20,13 @@ os.environ["SUPERMIMIC_ROBOT"] = args.robot
 
 import torch
 
-from supermimic.env import TrackingSim, make_sim
-from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MDP, MAX_STEP_REWARD
-from supermimic.motion import CONTROL_DT, MotionLib
-from supermimic.robot import TRACKED_BODIES, DEFAULT_MOTION, default_joint_pos_list
-from supermimic.rotations import quat_to_mat, rot_angle_sq
+from supermimic.envs.tracking_env import TrackingSim
+from supermimic.envs.sim_context import make_sim
+from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.mdp import MDP, MAX_STEP_REWARD
+from supermimic.motions.library import CONTROL_DT, MotionLib
+from supermimic.robots import TRACKED_BODIES, DEFAULT_MOTION, default_joint_pos_list
+from supermimic.utils.rotations import quat_to_mat, rot_angle_sq
 
 dev = "cuda:0"
 kin = G1Kinematics(dev)
