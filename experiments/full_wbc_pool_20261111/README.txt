@@ -64,3 +64,20 @@ The CSV legacy column wm_err8 now means the configured twelfth step; terminal/Te
 Pool logs additionally include tracking component scores, root/body RMSE, action delta RMS,
 joint acceleration RMS, clean-end/failure counts, active/resident/legacy sizes and coverage.
 Motion-start coverage does not prove full-frame traversal or full-motion success.
+
+
+2026-11-11 自碰撞续训分支
+branch: experiment/control-100hz-pool-self-collision
+parent: control-100hz-pool @ cfab19301b72fbd62eca4da593c16c91b9ccdacd
+new run: tg_full_wbc_100hz_pool_w12_h48_selfcol_s0_20261111
+
+Tiangong3 enabled_self_collisions=True。使用现有 USD/URDF 的碰撞几何，保留导入器的连接关节/显式碰撞过滤规则。
+其余控制100Hz、物理400Hz、WM12/Actor48、四卡各4096、全量WBC和30%/20%换池、奖励/PD/动作缩放/DR沿用父组。
+从父组保存的 last.pt 续训，保留网络、优化器和池状态；replay 按原恢复逻辑重建，因此样本来自开启自碰撞后的动力学。
+args.json/检查点新增 self_collisions 字段；启动信息明确打印开关和旧/新动力学切换。
+历史未记录该字段的 TG 检查点按本次之前的关闭状态处理。
+旧组目录与旧权重保留，不把开关前后的曲线混为同一组从零训练。
+
+已完成实际接触过滤核查：默认站姿无自接触；200个随机关节姿态，开启38个有自接触、关闭0个。
+同一30k Actor在64环境×200步的全DR测试中，两组均0次非有限状态重置，开启组实际观察到自接触。
+这些检查验证开关/数值可运行，不证明策略质量已适应新的碰撞约束；大规模学习与正式续训验证另存 artifacts/self_collision_20261111。

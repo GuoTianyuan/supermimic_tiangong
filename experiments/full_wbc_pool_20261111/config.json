@@ -1,11 +1,11 @@
 {
-  "run": "tg_full_wbc_100hz_pool_w12_h48_s0_20261111",
-  "branch": "control-100hz-pool",
+  "run": "tg_full_wbc_100hz_pool_w12_h48_selfcol_s0_20261111",
+  "branch": "experiment/control-100hz-pool-self-collision",
   "base_commit": "a8266ac",
   "comparison_branch": "experiment/control-100hz-w12-h48",
   "comparison_commit": "4d90866",
   "server": "a800_1",
-  "from_scratch": true,
+  "from_scratch": false,
   "dataset": "/media/supermimic/data/full_wbc_validated",
   "dataset_clips": 306948,
   "world_size": 4,
@@ -89,5 +89,13 @@
     "Body tables do not count toward GPU residency; root/joint tables and replay still grow with active and pinned clips.",
     "Quadrupling environments also quadruples simulated transitions per learning iteration; match sample and wall-time budgets when interpreting results."
   ],
-  "source_dataset": "/media_li/wbc_full"
+  "source_dataset": "/media_li/wbc_full",
+  "parent_run": "tg_full_wbc_100hz_pool_w12_h48_s0_20261111",
+  "parent_commit": "cfab19301b72fbd62eca4da593c16c91b9ccdacd",
+  "self_collisions": true,
+  "differences_from_parent": [
+    "Enable robot self-collisions using the existing URDF/USD collision geometry and default joint/collision filters.",
+    "Resume weights, optimizer and pool state from a preserved pre-switch checkpoint; rebuild replay with the new contact dynamics.",
+    "Write self_collisions into args/checkpoints and print it at startup; use a separate run directory."
+  ]
 }

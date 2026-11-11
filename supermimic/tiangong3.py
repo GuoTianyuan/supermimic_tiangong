@@ -116,7 +116,7 @@ G1_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(usd_path=USD_PATH, variants={'Physics':'mujoco'},
         activate_contact_sensors=False,
         rigid_props=sim_utils.RigidBodyPropertiesCfg(disable_gravity=False,linear_damping=0.,angular_damping=0.),
-        articulation_props=sim_utils.ArticulationRootPropertiesCfg(enabled_self_collisions=False)),
+        articulation_props=sim_utils.ArticulationRootPropertiesCfg(enabled_self_collisions=True)),
     init_state=ArticulationCfg.InitialStateCfg(pos=(0.,0.,.95),joint_pos=DEFAULT_JOINT_POS,joint_vel={'.*':0.}),
     soft_joint_pos_limit_factor=.9, actuators=acts,
 )

@@ -131,7 +131,7 @@ from supermimic.mdp import (ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD,
 from supermimic.motion import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 import supermimic.networks as networks
 from supermimic.networks import Critic, Policy, WorldModel
-from supermimic.robot import DEFAULT_MOTION, G1_JOINT_NAMES, action_scale, default_joint_pos_list, set_dynamics
+from supermimic.robot import DEFAULT_MOTION, G1_CFG, G1_JOINT_NAMES, action_scale, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
 dr_curriculum = parse_curriculum(args.dr_curriculum)
 if dr_curriculum and not parse_terms(args.dr):
@@ -168,6 +168,11 @@ set_dynamics(args.dynamics)
 dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
 args.reward_cfg = vars(reward_cfg(args.dynamics))
 args.simulation_timing = dict(control_dt=CONTROL_DT, physics_dt=CONTROL_DT/4, physics_substeps=4)
+args.self_collisions = bool(G1_CFG.spawn.articulation_props.enabled_self_collisions)
+if ck is not None and ck["args"].get("self_collisions", False) != args.self_collisions:
+    print(f"[rank {RANK}] Self-collision setting changed from {ck['args'].get('self_collisions', False)} "
+          f"to {args.self_collisions}; replay is rebuilt from the new simulator and the world model has to re-adapt.",
+          flush=True)
 if MAIN:
     json.dump(vars(args), open(os.path.join(args.log_dir, "args.json"), "w"), indent=2)
 
@@ -749,6 +754,7 @@ with launch_simulation(sim_cfg, args):
         print(f" {envs} | iterations {start_it} -> {args.iterations} | world-model warm-up until {args.wm_only_iters}"
               f" | checkpoint every {args.ckpt_every}")
         print(f" Joint dynamics: {args.dynamics}")
+        print(f" Robot self-collisions: {args.self_collisions}")
         print(f" Reward action-rate {mdp.cfg.w_action_rate:g}, joint-acc {mdp.cfg.w_joint_acc:g}; gamma {args.gamma:g}; "
               f"WM {args.wm_window} steps, Actor {HZ} steps; control {CONTROL_DT:g}s, physics {CONTROL_DT/4:g}s")
         print(" Domain randomization: friction, joint offsets, torso COM" + (f" + {describe(dr.terms)} (xi {dr.xi_dim})" if dr.terms else ""))
