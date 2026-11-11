@@ -5,6 +5,9 @@ import os
 import sys
 import hashlib
 import json
+import subprocess
+
+subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))

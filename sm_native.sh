@@ -14,23 +14,23 @@
 #   ./sm_native.sh tb [run...]       TensorBoard for existing runs (Ctrl+C closes it)
 #   ./sm_native.sh run [--gpu N] [--robot R] <command...>
 #
-# SM_PYTHON selects the interpreter (default .conda/bin/python, then activated Conda environment).
+# SM_PYTHON selects an explicit interpreter; otherwise use named Conda env tg_supermimic.
+# SM_CONDA_ENV / SM_CONDA_PREFIX override the default environment.
 # TensorBoard binds to 127.0.0.1; view it with: ssh -p <port> -L 16006:127.0.0.1:16006 <host>
 set -euo pipefail
 cd "$(dirname "$0")"
 SELF=$(pwd)/$(basename "$0")
+source scripts/setup/conda_env.sh
 if [ -n "${SM_PYTHON:-}" ]; then
     PY=$SM_PYTHON
-elif [ -x "$PWD/.conda/bin/python" ]; then
-    PY=$PWD/.conda/bin/python
-elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
-    PY=$CONDA_PREFIX/bin/python
+elif PREFIX=$(sm_conda_prefix); then
+    PY=$PREFIX/bin/python
 else
-    echo "Run bash scripts/setup/setup.sh first, or set SM_PYTHON to your Conda Python." >&2
+    echo "Conda environment ${SM_CONDA_ENV:-tg_supermimic} not found. Run bash scripts/setup/setup.sh or set SM_PYTHON." >&2
     exit 1
 fi
 export SM_PYTHON=$PY
-export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$PWD/src${SM_EXTRA_PYTHONPATH:+:$SM_EXTRA_PYTHONPATH}" PYTHONNOUSERSITE=1
 [ -x "$PY" ] || { echo "error: Python not found at $PY (set SM_PYTHON)" >&2; exit 1; }
 export PATH="$(dirname "$PY"):$PATH" PYTHONUNBUFFERED=1
 export MPLCONFIGDIR=${MPLCONFIGDIR:-$PWD/.cache/matplotlib}

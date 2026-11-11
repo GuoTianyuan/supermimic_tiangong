@@ -132,7 +132,7 @@ def test_launcher_help_with_lab_cli_stub(tmp_path,script):
     # Only validates CLI wiring. This deliberately cannot launch a simulator.
     lab=tmp_path/'isaaclab';lab.mkdir();(lab/'__init__.py').write_text('')
     (lab/'app.py').write_text('def add_launcher_args(parser):\n    parser.add_argument("--device",default="cuda:0")\n    parser.add_argument("--visualizer")\ndef launch_simulation(*a,**kw):\n    raise AssertionError("Simulator must not launch for --help")\n')
-    env={**os.environ,'PYTHONPATH':str(tmp_path),'PYTHONDONTWRITEBYTECODE':'1','SM_PYTHON':sys.executable,
+    env={**os.environ,'SM_EXTRA_PYTHONPATH':str(tmp_path),'PYTHONDONTWRITEBYTECODE':'1','SM_PYTHON':sys.executable,
          'MPLCONFIGDIR':str(tmp_path/'mpl'),'WARP_CACHE_PATH':str(tmp_path/'warp'),'TORCHINDUCTOR_CACHE_DIR':str(tmp_path/'torch')}
     proc=subprocess.run(['bash',str(ROOT/'sm_native.sh'),'run',sys.executable,script,'--help'],cwd=tmp_path,env=env,capture_output=True,text=True,timeout=30)
     assert proc.returncode==0,proc.stderr

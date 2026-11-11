@@ -27,7 +27,7 @@
 `.vendor/newton/`；这些是源码快照，不是新的 Git clone。不要随意切换成最新 release。
 版本号、源码提交和资源路径影响兼容性，安装方式本身并不能保证与服务器一致。
 
-优先创建仓库默认 `.conda`，避免覆盖旧的 `supermimic` 环境。配置好 Python 依赖后，
+默认创建标准命名 Conda 环境 `tg_supermimic`，安装在 Conda 的 `envs/` 目录，避免覆盖旧的 `supermimic` 环境。配置好 Python 依赖后，
 仍需验收 GPU、真实环境步进及一次包含 Actor/Critic 更新的短训。
 
 ## 安装
@@ -48,12 +48,14 @@ bash /tmp/Miniforge3.sh
 ```
 
 ```bash
-git clone -b bc_100hz_dev git@github.com:wenhan10086/supermimic.git
+git clone -b bc_100hz_dev git@github.com:wenhan10086/supermimic.git tg_supermimic
 cd tg_supermimic
 bash scripts/setup/setup.sh
+conda activate tg_supermimic
 ```
 
-默认创建仓库内 `.conda` 环境，`./sm.sh` 与 `./sm_native.sh` 都自动使用它，无需手动激活。
+默认创建命名环境 `tg_supermimic`。本机路径为 `/home/mig/anaconda3/envs/tg_supermimic`。
+`./sm.sh` 与 `./sm_native.sh` 自动选择它，无需手动激活；不会回退到当前激活的其他环境。
 tmux、ffmpeg、C++ 编译器通过 Conda 安装。Isaac Lab 和 Newton 从仓库内的固定源码压缩包安装，
 不访问 GitHub；地面和机器人资源都使用相对路径，从本地加载。
 
@@ -65,11 +67,17 @@ PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple bash scripts/setup/setup.sh
 # 自定义环境位置，后续启动时也要设置 SM_PYTHON
 SM_CONDA_PREFIX=/your/env/path bash scripts/setup/setup.sh
 export SM_PYTHON=/your/env/path/bin/python
+# 或自定义命名环境（安装和启动均设置）
+export SM_CONDA_ENV=my_tg
+bash scripts/setup/setup.sh
 ```
 
 依赖版本来自已验证的训练运行时，使用 `requirements-native.lock` 和 `--no-deps` 固定安装。
-上游 importer 元数据与 USD/Newton 版本存在冲突，因此 `pip check` 可能报告已知元数据冲突，
-不要用 `pip install -U` 自动“修复”导致 MuJoCo、Torch 或 USD 被降级。
+安装后必须通过 `pip check`；安装器和自检脚本遇到冲突即失败。训练锁已排除当前后端不使用的
+PhysX 运行时、Pinocchio/Pink IK、Numba 和离线资产转换依赖。不要为安装可选工具而升级或降级训练的 MuJoCo、Torch、NumPy 或 USD。
+
+环境激活时清空 `PYTHONPATH` 并设置 `PYTHONNOUSERSITE=1`，避免全局 ROS/Python 3.10 或用户 site-packages 混入。
+启动器也执行隔离；确需额外源码路径时显式设置 `SM_EXTRA_PYTHONPATH`。
 可使用 `SM_WHEELHOUSE=/path/to/wheels` 安装预下载的 Python wheels（仍需预装 Conda 环境或可访问 Conda 镜像）。
 在同平台 Python 3.12 环境中准备 wheelhouse：
 
@@ -115,3 +123,24 @@ python -m pip download --no-deps -d wheelhouse -r requirements-native.lock torch
 Tiangong3 的 motion1、balance 和 50 Hz Take_001 动作及 metadata。大规模外部动作库和训练权重不包含在内。
 换用自己的动作时运行 `scripts/data/prepare_motion_dir.py` 或 `scripts/assets/prepare_tiangong3.py` 校验，不要直接复制
 指向其他机器目录的软链接。各数据的来源和许可见 [docs/DATA_ASSETS.md](DATA_ASSETS.md)。
+
+## 可选资产转换工具
+
+训练和播放直接加载仓库中已生成的 MJCF/USD，不需要安装 `isaacsim-asset-isolated`。
+该转换工具锁定 MuJoCo 3.12、USD Exchange 2.3，与训练的 3.15/3.0.1 不兼容；
+脚本仍保留在 `scripts/assets/`，需要重新生成资产时使用单独工具环境：
+
+```bash
+conda create -n tg_supermimic_assets python=3.12 pip -y
+conda activate tg_supermimic_assets
+unset PYTHONPATH
+export PYTHONNOUSERSITE=1
+python -m pip install --extra-index-url https://pypi.nvidia.com -r requirements-assets.txt
+python -m pip check
+# 在此环境运行 scripts/assets/ 下的 USD 转换脚本；完成后切回训练环境。
+conda activate tg_supermimic
+```
+
+`requirements-assets.txt` 是独立的直接依赖清单，不能叠加安装到训练环境。
+本次仅核对并解析该工具清单，不自动创建工具环境，不重新生成已有机器人资源。
+Pinocchio/Pink、Numba 和 PhysX 后端没有加入本项目的训练依赖；未来启用对应功能时另做兼容验证。

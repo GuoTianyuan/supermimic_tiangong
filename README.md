@@ -48,6 +48,7 @@ python scripts/training/train.py --help
 
 ```bash
 bash scripts/setup/setup.sh
+conda activate tg_supermimic
 ```
 
 详细依赖、镜像、Conda 和 CUDA 约束见 [部署说明](docs/DEPLOY_CONDA.md)。

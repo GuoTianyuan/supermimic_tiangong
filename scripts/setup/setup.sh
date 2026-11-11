@@ -6,7 +6,8 @@ if [[ ${1:-} == --help ]]; then
     cat <<'EOF'
 Usage: bash scripts/setup/setup.sh
 Linux x86_64, NVIDIA driver compatible with CUDA 13, Conda required.
-SM_CONDA_PREFIX     environment path (default: <repo>/.conda)
+SM_CONDA_ENV        environment name (default: tg_supermimic)
+SM_CONDA_PREFIX     optional explicit environment path; overrides SM_CONDA_ENV
 CONDA_EXE          conda executable (default: conda on PATH)
 CONDA_CHANNEL      default: Tsinghua conda-forge mirror
 PIP_INDEX_URL      default: Tsinghua PyPI mirror
@@ -20,12 +21,16 @@ fi
 [[ $(uname -s) == Linux && $(uname -m) == x86_64 ]] || { echo 'Requires Linux x86_64.' >&2; exit 1; }
 CONDA_BIN=${CONDA_EXE:-conda}
 command -v "$CONDA_BIN" >/dev/null || { echo 'Install Miniforge/Conda first; see docs/DEPLOY_CONDA.md.' >&2; exit 1; }
-PREFIX=${SM_CONDA_PREFIX:-$PWD/.conda}
-[[ $PREFIX == /* ]] || PREFIX="$PWD/$PREFIX"
+source scripts/setup/conda_env.sh
 CHANNEL=${CONDA_CHANNEL:-https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/conda-forge}
-if [[ ! -x $PREFIX/bin/python ]]; then
-    "$CONDA_BIN" create -y -p "$PREFIX" --override-channels -c "$CHANNEL" python=3.12 pip tmux ffmpeg cxx-compiler
+if ! PREFIX=$(sm_conda_prefix) || [[ ! -x $PREFIX/bin/python ]]; then
+    TARGET=(-n "${SM_CONDA_ENV:-tg_supermimic}")
+    [[ -z ${SM_CONDA_PREFIX:-} ]] || TARGET=(-p "$(realpath -m "$SM_CONDA_PREFIX")")
+    "$CONDA_BIN" create -y "${TARGET[@]}" --override-channels -c "$CHANNEL" python=3.12 pip tmux ffmpeg cxx-compiler
+    PREFIX=$(sm_conda_prefix)
 fi
+"$CONDA_BIN" env config vars set -p "$PREFIX" PYTHONPATH= PYTHONNOUSERSITE=1
+export PYTHONPATH= PYTHONNOUSERSITE=1
 PY="$PREFIX/bin/python"
 "$PY" -c 'import sys; assert sys.version_info[:2] == (3,12), "Python 3.12 required"'
 export PIP_INDEX_URL=${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
@@ -48,7 +53,7 @@ else
     for index in "${EXTRA_INDEXES[@]}"; do UV_ARGS+=(--index "$index"); done
 fi
 export UV_HTTP_TIMEOUT=${UV_HTTP_TIMEOUT:-180} UV_HTTP_RETRIES=${UV_HTTP_RETRIES:-10}
-# Install the known working graph verbatim, avoiding upstream metadata conflicts.
+# Install the tested training graph verbatim; optional incompatible tools are separate.
 # PyPI's Linux Torch 2.11 build uses CUDA 13; NVIDIA runtime pins are in the lock.
 "$PREFIX/bin/uv" pip install "${UV_ARGS[@]}" torch==2.11.0 torchvision==0.26.0 -r requirements-native.lock
 "$PY" scripts/setup/unpack_vendor.py
@@ -57,6 +62,8 @@ for p in isaaclab isaaclab_assets isaaclab_contrib isaaclab_experimental isaacla
     LOCAL_PACKAGES+=(-e "$PWD/IsaacLab/source/$p")
 done
 "$PY" -m pip install --no-deps --no-build-isolation -e "$PWD/.vendor/newton" "${LOCAL_PACKAGES[@]}" -e "$PWD"
+"$PY" -m pip check
 SM_PYTHON="$PY" ./sm_native.sh run python scripts/setup/check_install.py
 echo "Ready. Use ./sm.sh (native Conda launcher). Environment: $PREFIX"
-echo "Custom prefix: export SM_PYTHON='$PY' before future commands."
+echo "Activate: conda activate '$PREFIX' (default name: tg_supermimic)."
+echo "Custom environments: export SM_PYTHON='$PY' before future commands."

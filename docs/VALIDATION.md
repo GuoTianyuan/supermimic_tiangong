@@ -1,5 +1,7 @@
 # 部署验收记录（2026-10-28）
 
+最新本地命名环境及依赖冲突处理见 [LOCAL_ENVIRONMENT.md](LOCAL_ENVIRONMENT.md)，原始记录在 `logs/conda_migration_20261111/`。下文保留目录重构时的历史验收范围。
+
 基线：`2f2f05fc7a33992b24757a2edb3bf572cd38c0df`。验证 GPU：RTX 5090，Python 3.12，Torch 2.11.0+cu130。
 
 ## 验证范围
