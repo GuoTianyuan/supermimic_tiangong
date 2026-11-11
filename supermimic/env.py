@@ -28,6 +28,7 @@ from .mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, flatten_state
 from .motion import BIN_FRAMES, CONTROL_DT, MotionLib
 from .robot import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
 from .rotations import mat_to_quat, quat_to_mat, so3_exp
+from .sampling import update_bin_returns_
 
 SIM_STATE_BOUND = 1e3  # |entries| of a sane state (positions in m, velocities in m/s and rad/s)
 
@@ -299,19 +300,20 @@ class TrackingSim:
     # ------------------------------------------------------------------ reset
     def sample_frames(self, n: int) -> tuple[torch.Tensor, torch.Tensor]:
         m = self.motion
+        eligible = (m.active_bins if hasattr(m, "active_bins") else
+                    torch.arange(m.num_bins, device=self.device))
+        # A final partial bin can contain only the clip's last frame. It has no
+        # successor transition, so keep its stable ID but exclude it from resets.
+        eligible = eligible[m.bin_start[eligible] < m.clip_end[m.bin_clip[eligible]]]
+        if eligible.numel() == 0:
+            raise RuntimeError("No active motion bin has a valid successor frame for reset")
+        soft = torch.softmax(-self.reset_temp * self.bin_G[eligible] / self.G_max, 0)
+        avg = self.bin_w_avg[eligible].mul(0.999).add(0.001 * soft)
+        self.bin_w_avg[eligible] = avg
+        probs = 0.5 / len(eligible) + 0.4 * soft + 0.1 * avg / avg.sum()
+        bins = eligible[torch.multinomial(probs, n, replacement=True)]
         if hasattr(m, "active_bins"):
-            eligible = m.active_bins
-            soft = torch.softmax(-self.reset_temp * self.bin_G[eligible] / self.G_max, 0)
-            avg = self.bin_w_avg[eligible].mul(0.999).add(0.001 * soft)
-            self.bin_w_avg[eligible] = avg
-            probs = 0.5 / len(eligible) + 0.4 * soft + 0.1 * avg / avg.sum()
-            bins = eligible[torch.multinomial(probs, n, replacement=True)]
             m.record_starts(bins)
-        else:
-            soft = torch.softmax(-self.reset_temp * self.bin_G / self.G_max, 0)
-            self.bin_w_avg.mul_(0.999).add_(0.001 * soft)
-            probs = 0.5 / m.num_bins + 0.4 * soft + 0.1 * self.bin_w_avg / self.bin_w_avg.sum()
-            bins = torch.multinomial(probs, n, replacement=True)
         start = m.bin_start[bins]
         end = torch.minimum(start + BIN_FRAMES, m.clip_end[m.bin_clip[bins]])  # keep >= 1 step before the clip end
         f = start + (torch.rand(n, device=self.device) * (end - start).float()).long()
@@ -433,7 +435,7 @@ class TrackingSim:
             boot = torch.where(term[ids], 0.0, (self.gamma**T) * (self.ep_ret[ids] / T) / (1 - self.gamma))
             G = self.ep_disc_ret[ids] + boot
             b = self.start_bin[ids]
-            self.bin_G.index_put_((b,), 0.8 * self.bin_G[b] + 0.2 * G)
+            update_bin_returns_(self.bin_G, b, G)
             out["ep_len"] = T
             out["ep_ret_norm"] = self.ep_ret[ids] / (T * MAX_STEP_REWARD)
             self.reset(ids)

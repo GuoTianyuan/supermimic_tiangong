@@ -38,6 +38,9 @@ parser.add_argument("--goal_drop", type=str, default=None,
                     "use the full reference. Default: none; a resumed run keeps its checkpoint's")  # fmt: skip
 parser.add_argument("--hist", type=int, default=10)
 parser.add_argument("--wm_window", type=int, default=12)
+parser.add_argument("--wm_prediction", choices=["state_delta", "velocity_integrated"], default=None,
+                    help="WM output: original state increments, or velocity increments with explicit pose "
+                    "integration (default: state_delta; resume keeps the checkpoint mode)")
 parser.add_argument("--wm_batches", type=int, default=10)
 parser.add_argument("--wm_batch", type=int, default=2048)
 parser.add_argument("--pi_batch", type=int, default=4096)
@@ -121,7 +124,8 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 from supermimic.buffer import ReplayBuffer
-from supermimic.diagnostics import EXTRA_FIELDS, POOL_FIELDS, REWARD_KEYS, RealMetrics
+from supermimic.diagnostics import (CRITIC_FIELDS, EXTRA_FIELDS, POOL_FIELDS, REWARD_KEYS, WM_FIELDS, WM_GROUPS,
+                                   WM_TB_TAGS, WM_UNITS, CriticMetrics, RealMetrics, WorldModelMetrics, wm_error_summary)
 from supermimic.motion_pool import MotionPool
 from supermimic.dr import LATE_TERMS, DRCfg, curriculum_scale, describe, describe_scale, parse_curriculum, parse_terms
 from supermimic.env import TrackingSim, make_sim
@@ -153,9 +157,12 @@ os.makedirs(args.log_dir, exist_ok=True)
 ck = torch.load(args.resume, map_location=dev) if args.resume else None
 # checkpoints from before these options existed were trained with the second value
 for k, new, old in (("critic_layer_norm", True, False), ("act_soft_clip", True, False), ("act_norm", "ref", "running"),
-                    ("reset_a_prev", "pose", "zero"), ("dynamics", "default", "default"), ("goal_drop", "", "")):  # fmt: skip
+                    ("reset_a_prev", "pose", "zero"), ("dynamics", "default", "default"), ("goal_drop", "", ""),
+                    ("wm_prediction", "state_delta", "state_delta")):  # fmt: skip
     if getattr(args, k) is None:
         setattr(args, k, ck["args"].get(k, old) if ck else new)
+if ck is not None and ck["args"].get("wm_prediction", "state_delta") != args.wm_prediction:
+    raise ValueError("Cannot resume a checkpoint with a different --wm_prediction; start a separate ablation")
 GOAL_DROP = parse_goal_drop(args.goal_drop)
 args.goal_drop = ",".join(GOAL_DROP)
 if ck is not None and parse_goal_drop(ck["args"].get("goal_drop", "")) != GOAL_DROP:
@@ -168,6 +175,9 @@ set_dynamics(args.dynamics)
 dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
 args.reward_cfg = vars(reward_cfg(args.dynamics))
 args.simulation_timing = dict(control_dt=CONTROL_DT, physics_dt=CONTROL_DT/4, physics_substeps=4)
+if ck is not None and args.wm_prediction == "velocity_integrated":
+    if ck["args"].get("simulation_timing") != args.simulation_timing:
+        raise ValueError("Integrated WM resume requires the checkpoint's control/physics timing")
 args.self_collisions = bool(G1_CFG.spawn.articulation_props.enabled_self_collisions)
 if ck is not None and ck["args"].get("self_collisions", False) != args.self_collisions:
     print(f"[rank {RANK}] Self-collision setting changed from {ck['args'].get('self_collisions', False)} "
@@ -202,11 +212,12 @@ K, Hh, HZ = args.goal_frames, args.hist, args.horizon
 GOAL_DIM = goal_frame_dim(GOAL_DROP) * K
 CRITIC_IN = INV_DIM + CRITIC_EXTRA + dr.xi_dim + GOAL_DIM
 
-wm = WorldModel(xi_dim=dr.xi_dim, a_prev=bool(dr.terms)).to(dev)
+wm = WorldModel(xi_dim=dr.xi_dim, a_prev=bool(dr.terms), prediction=args.wm_prediction,
+                control_dt=CONTROL_DT, physics_substeps=args.simulation_timing["physics_substeps"]).to(dev)
 pi = Policy(OBS_DIM, GOAL_DIM, hist=Hh, soft_clip_actions=args.act_soft_clip).to(dev)
 # RunningNorm freezes after 2e8 samples, sized for one GPU with 4096 environments and pi_batch 4096;
 # scaled so that the normalizers still freeze at the same iteration
-for norm in (pi.obs_norm, pi.goal_norm, wm.in_norm, wm.out_norm):
+for norm in (pi.obs_norm, pi.goal_norm, wm.in_norm, *wm.output_normalizers()):
     norm.max_count *= WORLD * args.num_envs / 4096
 # The extended xi entries (supermimic/dr.py) lie in [-1, 1] and stay constant until a --dr_curriculum stage
 # reaches them; running statistics would be frozen around that constant by then.
@@ -365,10 +376,12 @@ def _wm_rollout(s, a, a_prev, xi):
 
 
 def _wm_err(S_hat, s1, mask):
-    std = torch.maximum(wm.out_norm.std(), ERR_FLOOR)
-    e = (wm.state_error(S_hat, unflatten_state(s1)) / std) ** 2  # (B, k, D)
-    e = e.mean(-1)
-    return (e * mask).sum() / s1.shape[0], e[:, -1], e[:, 0]
+    std = torch.maximum(wm.error_std(), ERR_FLOOR)
+    raw = wm.state_error(S_hat, unflatten_state(s1))
+    squared = (raw / std) ** 2  # (B, k, D)
+    summary = wm_error_summary(raw, squared, mask, std, ERR_FLOOR)
+    e = squared.mean(-1)
+    return (e * mask).sum() / s1.shape[0], e[:, -1], e[:, 0], summary
 
 
 def _imag_step(S, o_hist, a_prev, f, xi, xi_n, g):
@@ -422,7 +435,7 @@ def set_requires_grad(m: nn.Module, flag: bool):
 CSV_FIELDS = ["iteration", "wall_h", "sim_steps", "wm_loss", "wm_err8", "pi_loss", "v_loss", "imag_rew", "pi_gradnorm",
               "imag_survival", "sim_rew", "ep_len", "ep_ret_norm", "term_frac", "it_per_s", "lr",
               "v_end_mean", "v_end_max", "v_end_over", "pi_gradnorm_max", "a_gain_med", "a_gain_max", "dr_scale", "sim_nonfinite",
-              "smooth_pen_frac", "joint_acc", *EXTRA_FIELDS]  # fmt: skip
+              "smooth_pen_frac", "joint_acc", *EXTRA_FIELDS, *CRITIC_FIELDS, *WM_FIELDS]  # fmt: skip
 SMOOTH_KEYS = ("pen_smooth", "track", "joint_acc")
 # TensorBoard sorts groups by name, so the numeric prefixes put the tracking metrics first.
 TB_TAGS = {
@@ -443,7 +456,7 @@ TB_TAGS = {
     "sim_nonfinite": "1_tracking/diverged_sim_states",
     "smooth_pen_frac": "1_tracking/smoothness_penalty_over_tracking_reward",
     "joint_acc": "1_tracking/joint_acc_sq_sum_rad2_per_s4",
-    "v_loss": "4_critic/value_loss",
+    "v_loss": "4_critic/legacy_last_minibatch_mse",
     "v_end_mean": "4_critic/horizon_value_mean",
     "v_end_max": "4_critic/horizon_value_max",
     "v_end_over": "4_critic/horizon_value_above_max_return_frac",
@@ -459,6 +472,9 @@ for key in EXTRA_FIELDS:
              "9_tracking_errors" if key.startswith("error_") else "1_tracking")
     TB_TAGS[key] = f"{group}/{key}"
 TB_TAGS["wm_nse1"] = "2_world_model/error_after_1_step"
+for key in CRITIC_FIELDS:
+    TB_TAGS[key] = f"4_critic/{key}"
+TB_TAGS.update(WM_TB_TAGS)
 
 
 def _hms(seconds: float) -> str:
@@ -477,9 +493,17 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
     title = f"Learning iteration {r['iteration']}/{args.iterations}  ({'world model + policy' if policy else 'world-model warm-up'})"
     free, total = torch.cuda.mem_get_info()
     lines = [(f"WM loss / NSE1 / NSE{args.wm_window}", f"{r['wm_loss']:.4f} / {r['wm_nse1']:.4f} / {r['wm_err8']:.4f}")]
+    lines += [("WM all-batch loss / valid", f"{r['wm_fit_loss_per_step']:.4f} / {100*r['wm_fit_valid_fraction']:.1f}%"),
+              ("WM groups (all batches/ranks)", "loss | share | component RMS | mean scale | at floor")]
+    for group, unit in zip(WM_GROUPS, WM_UNITS):
+        prefix = f"wm_{group}"
+        lines.append((f"  WM {group}",
+                      f"{r[prefix+'_loss_contribution']:.4g} | {100*r[prefix+'_loss_share']:.1f}% | "
+                      f"{r[prefix+'_raw_rmse']:.4g} {unit} | {r[prefix+'_scale_mean']:.4g} | "
+                      f"{100*r[prefix+'_floor_fraction']:.0f}%"))
     if policy:
         lines += [("Policy loss / grad norm (max)", f"{r['pi_loss']:.3f} / {r['pi_gradnorm']:.3f} ({r['pi_gradnorm_max']:.3f})"),
-                  ("Critic loss", f"{r['v_loss']:.4f}"),
+                  ("Critic fit Huber / MSE", f"{r['fit_weighted_huber']:.4f} / {r['fit_weighted_mse']:.4f}"),
                   ("Critic V(s_H) mean / max", f"{r['v_end_mean']:.2f} / {r['v_end_max']:.2f} "
                    f"({100 * r['v_end_over']:.1f}% above the max return {G_MAX:.0f})"),
                   ("Imagined net reward / survival", f"{r['imag_reward_normalized']:.3f} / {100*r['imag_survival']:.2f}%"),
@@ -534,7 +558,8 @@ def print_progress(r: dict, n_done: float, steps_per_s: float, elapsed_s: float,
 def wm_update():
     w = buffer.sample_windows(args.wm_batch, args.wm_window)
     S_hat = wm_rollout(w["s"], w["a"], w["a_prev"], w["xi"])
-    loss, e_last, e_first = wm_err(S_hat, w["s1"], w["mask"])
+    loss, e_last, e_first, wm_summary = wm_err(S_hat, w["s1"], w["mask"])
+    wm_metrics.update(wm_summary)
     opt_wm.zero_grad(set_to_none=True)
     loss.backward()
     sync_grads(wm)
@@ -545,16 +570,7 @@ def wm_update():
 
 
 def sample_valid_starts(B: int):
-    starts, hists, n = [], [], 0
-    while n < B:
-        s, h = buffer.sample_starts(2 * B, Hh)
-        f = s["f"]
-        ok = f + HZ <= motion.clip_end[motion.clip_id[f]]
-        idx = ok.nonzero(as_tuple=False).squeeze(-1)[: B - n]
-        starts.append({k: v[idx] for k, v in s.items()}), hists.append({k: v[idx] for k, v in h.items()})
-        n += len(idx)
-    cat = lambda ds: {k: torch.cat([d[k] for d in ds]) for k in ds[0]}  # noqa: E731
-    return cat(starts), cat(hists)
+    return buffer.sample_valid_starts(B, Hh, HZ, motion.clip_id, motion.clip_end)
 
 
 PROFILE = bool(int(os.environ.get("SM_PROFILE", "0")))
@@ -569,7 +585,7 @@ def policy_update():
     xi_n = normalize_xi(xi)
     with torch.no_grad():
         o_hist = mdp.obs(unflatten_state(h["s"]), h["a_prev"], h["xi"], h["f"])
-    o_hist = mdp.add_noise(o_hist)
+    o_hist = mdp.add_history_noise(o_hist, h["noise_source"])
     set_requires_grad(wm, False)
     set_requires_grad(critic, False)
     B = args.pi_batch
@@ -642,7 +658,9 @@ def policy_update():
                 idx = perm[i * mb : (i + 1) * mb]
                 v, y, w = critic(Xf[idx]), Yf[idx], Wf[idx]
                 w_sum = w.sum().clamp(min=1e-6)
-                v_loss = (w * F.huber_loss(v, y, reduction="none", delta=1.0)).sum() / w_sum
+                huber = F.huber_loss(v, y, reduction="none", delta=1.0)
+                v_loss = (w * huber).sum() / w_sum
+                critic_metrics.update(v, y, w, huber)
                 opt_v.zero_grad(set_to_none=True)
                 v_loss.backward()
                 sync_grads(critic)
@@ -664,7 +682,8 @@ def a_prev_gain(n: int = 256) -> torch.Tensor:
     above 1 the imagined action loop (and its BPTT gradient) can grow from step to step."""
     s, h = buffer.sample_starts(n, Hh)
     with torch.no_grad():
-        o = mdp.add_noise(mdp.obs(unflatten_state(h["s"]), h["a_prev"], h["xi"], h["f"]))
+        o = mdp.add_history_noise(
+            mdp.obs(unflatten_state(h["s"]), h["a_prev"], h["xi"], h["f"]), h["noise_source"])
     x = o[:, -1, OBS_A_PREV : OBS_A_PREV + 29].clone().requires_grad_(True)
     newest = torch.cat((o[:, -1, :OBS_A_PREV], x, o[:, -1, OBS_A_PREV + 29 :]), -1)
     a = pi(torch.cat((o[:, :-1], newest.unsqueeze(1)), 1), motion.goal(s["f"], K, GOAL_DROP))
@@ -680,6 +699,8 @@ with launch_simulation(sim_cfg, args):
                       reset_a_prev=args.reset_a_prev, reset_temp=args.reset_temp)
     buffer = ReplayBuffer(args.buffer_steps, args.num_envs, dev, xi_dim=dr.xi_dim)
     real_metrics = RealMetrics(dev)
+    critic_metrics = CriticMetrics(dev)
+    wm_metrics = WorldModelMetrics(dev, G1_JOINT_NAMES)
     obs_hist = torch.zeros(args.num_envs, Hh, OBS_DIM, device=dev)
 
     @torch.no_grad()
@@ -700,7 +721,7 @@ with launch_simulation(sim_cfg, args):
             real_metrics.update(out)
             S0, S1 = unflatten_state(out["s"]), unflatten_state(out["s1"])
             wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"]), out["a_prev"]))
-            wm.out_norm.update(wm.targets(S0, S1))
+            wm.update_output_normalization(S0, S1)
             sim_steps += args.num_envs * WORLD
             stats["r"].append(out["r"].mean() / MAX_STEP_REWARD)
             for k in SMOOTH_KEYS:
@@ -898,12 +919,17 @@ with launch_simulation(sim_cfg, args):
                 e1 = torch.tensor(extra["wm_nse1"], device=dev)
                 dist.all_reduce(e1, op=dist.ReduceOp.AVG)
                 extra["wm_nse1"] = float(e1)
-            row += [extra[k] for k in EXTRA_FIELDS]
+            extra.update(critic_metrics.flush())
+            wm_group_metrics, wm_channel_metrics = wm_metrics.flush()
+            extra.update(wm_group_metrics)
+            row += [extra[k] for k in (*EXTRA_FIELDS, *CRITIC_FIELDS, *WM_FIELDS)]
             if MAIN:
                 log_f.write(",".join(f"{x:.6g}" if isinstance(x, float) else str(x) for x in row) + "\n")
                 log_f.flush()
                 for k, v in zip(CSV_FIELDS[1:], row[1:]):
                     tb.add_scalar(TB_TAGS[k], v, done_it)
+                for tag, value in wm_channel_metrics.items():
+                    tb.add_scalar(tag, value, done_it)
                 eta = (now - t_session) / (done_it - start_it) * (args.iterations - done_it)
                 print_progress(dict(zip(CSV_FIELDS, row)), n_done, sps, now - t_start, eta, last_ckpt)
             stats = {k: [] for k in stats}

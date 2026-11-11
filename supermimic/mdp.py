@@ -121,6 +121,16 @@ class MDP:
     def add_noise(self, o: torch.Tensor) -> torch.Tensor:
         return o + (2 * torch.rand_like(o) - 1) * self.obs_noise
 
+    def add_history_noise(self, o: torch.Tensor, source: torch.Tensor) -> torch.Tensor:
+        """Noise (B,H,D) history, sharing one draw across copies of a padded frame.
+
+        ``source`` comes from ReplayBuffer.sample_starts. Genuine predecessor
+        frames keep independent noise; reset/buffer-boundary padding shares the
+        oldest retained frame's draw, including the all-padded reset case.
+        """
+        noisy = self.add_noise(o)
+        return noisy.gather(1, source.unsqueeze(-1).expand_as(noisy))
+
     # ---------------- reward / termination ----------------
     def reward(self, S, f, a, a_prev, terms: bool = False, qd_prev=None, ref_bodies=None):
         """Per-step reward (already multiplied by dt) comparing S with reference frame f; ``qd_prev``: the joint
