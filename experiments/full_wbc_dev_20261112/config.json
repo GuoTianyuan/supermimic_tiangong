@@ -1,0 +1,111 @@
+{
+  "run": "tg_full_wbc_100hz_dev_s0_20261112",
+  "branch": "bc_100hz_dev",
+  "base_commit": "478ba778e6df1487174b29d17012c1c8eef7bb3a",
+  "comparison_branch": "bc_100hz",
+  "comparison_commit": "8fc67db2a5fb7dd325f0814a23387b64f3989554",
+  "server": "a800_2",
+  "from_scratch": true,
+  "dataset": "/media/supermimic/data/full_wbc_validated",
+  "dataset_clips": 306948,
+  "world_size": 4,
+  "global_envs": 16384,
+  "global_wm_batch": 16384,
+  "global_pi_batch": 16384,
+  "control_hz": 100,
+  "physics_hz": 400,
+  "per_rank": {
+    "num_envs": 4096,
+    "wm_batch": 4096,
+    "pi_batch": 4096
+  },
+  "pool": {
+    "active_ratio": 0.3,
+    "replace_ratio": 0.2,
+    "refresh_iters": 1500,
+    "ratio_denominator": "clip count of each disjoint rank catalog; sums correspond to full catalog",
+    "preserve_replay_references": true,
+    "body_storage": "per-clip float32 CPU cache; pinned batches to GPU; root/joint/reference indices remain on GPU"
+  },
+  "reward": {
+    "action_rate": -0.4,
+    "joint_acc": -3e-06,
+    "tracking": "unchanged",
+    "joint_limit": -2.0
+  },
+  "training": {
+    "iterations": 320000,
+    "wm_window": 12,
+    "horizon": 48,
+    "gamma": 0.995,
+    "lam": 0.95,
+    "lr": 0.0002,
+    "utd": 0.4,
+    "buffer_steps": 1000,
+    "wm_batches": 10,
+    "goal_frames": 10,
+    "hist": 10,
+    "critic_epochs": 5,
+    "critic_minibatches": 4,
+    "critic_tau": 0.05,
+    "warmup_steps": 64,
+    "wm_only_iters": 500,
+    "lr_decay_iters": 250000,
+    "ckpt_every": 2500,
+    "log_every": 50,
+    "seed": 0,
+    "wm_prediction": "state_delta"
+  },
+  "dr": "all,contact",
+  "dr_curriculum": "3000,6000",
+  "dr_ramp": 2000,
+  "dynamics": "dexevt",
+  "amp": "bf16",
+  "differences_from_dense_w12_h48": [
+    "full WBC 306948 clips instead of SONIC 116552 clips",
+    "active/reference-resident rotating pool and its reference indexing",
+    "pool diagnostics and correctly scaled reward logging",
+    "full-catalog fixed action statistics use streamed accumulation",
+    "16384 global environments, WM batch and actor batch instead of 4096",
+    "CPU body reference cache with exact transfers; full-catalog root/joint resident GPU pool"
+  ],
+  "unchanged": [
+    "PD",
+    "URDF",
+    "action scale",
+    "network architectures",
+    "normalizer algorithm; freeze threshold still scales with total environment count as in TG",
+    "analytic sigmoid termination",
+    "reward formula/time scaling",
+    "gradient averaging before clipping",
+    "full DR ranges and schedule"
+  ],
+  "limitations": [
+    "Pool changes temporal availability of motions; not an exactly equivalent storage test.",
+    "Active fraction is not a GPU-memory cap; replay-pinned old clips can increase residency.",
+    "Single seed and different hosts: wall-time speed alone is not an isolated algorithm comparison.",
+    "wm_err8 CSV column is retained but measures step 12.",
+    "Scalar sim_rew and imag_rew are divided by MAX_STEP_REWARD=.05; dense100 historical logs used .1, so raw scalar plots must be rescaled before comparison.",
+    "Data size and pool availability both change vs dense SONIC; cannot attribute performance to loader alone.",
+    "Body tables do not count toward GPU residency; root/joint tables and replay still grow with active and pinned clips.",
+    "Quadrupling environments also quadruples simulated transitions per learning iteration; match sample and wall-time budgets when interpreting results."
+  ],
+  "source_dataset": "/media_li/wbc_full",
+  "self_collisions": true,
+  "comparison_run": "tg_full_wbc_100hz_pool_w12_h48_selfcol_s0_20261111",
+  "comparison_server": "a800_1",
+  "gpus": [
+    0,
+    1,
+    2,
+    3
+  ],
+  "differences_from_comparison": [
+    "New run starts from iteration zero with self-collisions enabled; a800_1 resumed non-self-collision checkpoint 32037.",
+    "Replay padded history shares noise across duplicate frames to match simulator history construction.",
+    "Concurrent completed episodes sharing a reset bin are averaged before one EMA update, avoiding duplicate indexed writes.",
+    "Bounded replay rejection sampling has a uniform fallback and explicit empty-candidate error.",
+    "Added WM channel/loss and critic Huber/MSE diagnostics; core prediction remains state_delta.",
+    "Functional package split and launch paths; local runtime validation completed at 478ba77."
+  ]
+}

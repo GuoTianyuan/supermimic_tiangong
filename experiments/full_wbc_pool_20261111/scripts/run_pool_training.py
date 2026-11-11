@@ -12,6 +12,7 @@ ART = Path('/media/supermimic/artifacts/full_wbc_pool_20261111')
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--gpus',required=True)
+    p.add_argument('--config',type=Path,default=ROOT/'experiments/full_wbc_pool_20261111/config.json')
     p.add_argument('--smoke',action='store_true')
     p.add_argument('--envs',type=int)
     p.add_argument('--batch',type=int)
@@ -21,7 +22,7 @@ def main():
     p.add_argument('--iterations',type=int)
     p.add_argument('--eager',action='store_true')
     a=p.parse_args()
-    cfg=json.loads((ROOT/'experiments/full_wbc_pool_20261111/config.json').read_text())
+    cfg=json.loads(a.config.read_text())
     gpus=[int(x) for x in a.gpus.split(',')]
     if len(gpus)!=len(set(gpus)):raise ValueError('Each rank needs a distinct GPU')
     if not a.smoke and len(gpus)!=cfg['world_size']:raise ValueError('Production preset requires four GPUs')
@@ -48,11 +49,12 @@ def main():
     if a.smoke and pars['num_envs']>=1024:pars['buffer_steps']=1000;pars['wm_batches']=10;pars['warmup_steps']=64
     if a.resume:pars['resume']=a.resume
     env=os.environ.copy()
-    env.update(SM_PYTHON='/media/supermimic/envs/tg_supermimic/bin/python',OMP_NUM_THREADS='8',OPENBLAS_NUM_THREADS='1',
+    cache=Path('/media/supermimic/cache')/cfg.get('server','a800_1')/'full_wbc_pool'
+    env.update(SM_PYTHON=env.get('SM_PYTHON','/media/supermimic/envs/tg_supermimic/bin/python'),OMP_NUM_THREADS='8',OPENBLAS_NUM_THREADS='1',
                LD_LIBRARY_PATH='/media/supermimic/runtime/cuda-compat/usr/local/cuda-13.0/compat:/usr/local/nvidia/lib:/usr/local/nvidia/lib64',
-               WARP_CACHE_PATH='/media/supermimic/cache/a800_1/full_wbc_pool/warp',
-               TORCHINDUCTOR_CACHE_DIR='/media/supermimic/cache/a800_1/full_wbc_pool/inductor_'+run,
-               MPLCONFIGDIR='/media/supermimic/cache/a800_1/full_wbc_pool/matplotlib')
+               WARP_CACHE_PATH=env.get('WARP_CACHE_PATH',str(cache/'warp')),
+               TORCHINDUCTOR_CACHE_DIR=env.get('TORCHINDUCTOR_CACHE_DIR',str(cache/('inductor_'+run))),
+               MPLCONFIGDIR=env.get('MPLCONFIGDIR',str(cache/'matplotlib')))
     if a.eager:env['TORCHDYNAMO_DISABLE']='1'
     else:env.pop('TORCHDYNAMO_DISABLE',None)
     cmd=['bash','sm_native.sh','_train',run,'--gpu',a.gpus,'--robot','tiangong3','--no_tb']
