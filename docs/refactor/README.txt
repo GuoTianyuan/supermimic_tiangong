@@ -46,6 +46,7 @@ Verification
 - Source syntax, undefined names, shell syntax, relocated references, package
   installation, import side effects and asset roots are checked.
 - --help tests use a minimal Lab CLI stub only; they do not exercise physics.
-- Local machine lacks the pinned Isaac Lab/Newton environment and usable NVIDIA
-  driver. Full simulator, CUDA performance, multi-rank training and true resume
-  integration have not been run here. tests/integration/ keeps those checks.
+- Initial refactor checks were CPU-only. The pinned local environment was later
+  installed and single-GPU simulation, training, resume and pool checks passed:
+  see ../LOCAL_ENVIRONMENT.md. Multi-rank training and full-library capacity are
+  still not covered by that local check. tests/integration/ keeps those checks.

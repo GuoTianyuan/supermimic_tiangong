@@ -81,5 +81,6 @@
     "timestamp": "2026-11-11T19:35:37.850024+08:00",
     "hostname": "mig-amd"
   },
-  "verified_at": "2026-11-11T19:36:27.408737+08:00"
+  "verified_at": "2026-11-11T19:36:27.408737+08:00",
+  "subsequent_runtime_validation": "../LOCAL_ENVIRONMENT.md (2026-11-11; single GPU simulation, training, resume, pool and ONNX checked)"
 }

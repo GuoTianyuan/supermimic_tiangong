@@ -22,7 +22,7 @@ import torch
 
 from supermimic.env import TrackingSim, make_sim
 from supermimic.kinematics import G1Kinematics
-from supermimic.mdp import MDP
+from supermimic.mdp import MDP, MAX_STEP_REWARD
 from supermimic.motion import CONTROL_DT, MotionLib
 from supermimic.robot import TRACKED_BODIES, DEFAULT_MOTION, default_joint_pos_list
 from supermimic.rotations import quat_to_mat, rot_angle_sq
@@ -66,6 +66,6 @@ with launch_simulation(sim_cfg, args):
         f1 = env.f + 1
         a = (motion.q[f1] - env.default_q) / env.alpha
         out = env.step(a)
-        rs.append(out["r"].mean().item() / 0.1)
+        rs.append(out["r"].mean().item() / MAX_STEP_REWARD)
         if t % 25 == 0:
             print(t, "norm reward", rs[-1], "term frac", env.failed_eval.float().mean().item(), "e_body_pos", out["terms"]["e_body_pos"].mean().item())

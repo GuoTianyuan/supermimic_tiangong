@@ -5,6 +5,8 @@
 当前开发分支为 `bc_100hz_dev`；`bc_100hz` 保留整理前的基线。环境继续使用固定源码快照和依赖锁。
 无需 Docker，也不需要另外寻找机器人 USD、mesh 或示例动作。
 
+本机 2026-11-11 的从零安装、GPU 仿真和保存续训结果见 [本地验收](LOCAL_ENVIRONMENT.md)。
+
 ## 安装方式与版本
 
 当前训练后端是 Isaac Lab kit-less / Newton / MuJoCo-Warp，不需要完整 Isaac Sim。
