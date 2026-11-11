@@ -1,6 +1,6 @@
 # TG SuperMimic
 
-开发基线为 `bc_100hz`，目录整理在 `refactor/isaaclab-layout`。
+稳定基线为 `bc_100hz`，整理后的开发分支为 `bc_100hz_dev`。
 源码采用官方仓库的 `src/` 包结构，运行入口按 Isaac Lab 示例放在 `scripts/`。
 仿真仍是固定版本的 **Isaac Lab 3 kit-less / Newton / MuJoCo-Warp**；目录整理没有切换到 PhysX，
 也没有将算法改为 PPO 或 ManagerBasedRLEnv。

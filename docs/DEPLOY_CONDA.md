@@ -2,8 +2,31 @@
 
 本次验证范围和原生训练结果见 [docs/VALIDATION.md](VALIDATION.md)，其中说明了依赖复用及全新下载验证的限制。
 
-代码基线为 `2f2f05fc7a33992b24757a2edb3bf572cd38c0df`，只追加部署相关修改。
+当前开发分支为 `bc_100hz_dev`；`bc_100hz` 保留整理前的基线。环境继续使用固定源码快照和依赖锁。
 无需 Docker，也不需要另外寻找机器人 USD、mesh 或示例动作。
+
+## 安装方式与版本
+
+当前训练后端是 Isaac Lab kit-less / Newton / MuJoCo-Warp，不需要完整 Isaac Sim。
+推荐普通运行时用固定版本 wheel，开发和接口层用固定提交源码的 editable 安装。
+`pip install -e` 仍由 pip 注册包，但运行时读取源码目录；不是所有组件都需要从源码编译。
+
+| 组件 | 本分支安装方式 | 固定版本 |
+| --- | --- | --- |
+| Python | 独立 Conda 环境 | 3.12 |
+| Torch / torchvision | pip/uv wheel | 2.11.0 / 0.26.0 |
+| MuJoCo / MuJoCo-Warp | pip/uv wheel | 3.15.0 / 3.15.0 |
+| Warp | pip/uv wheel | 1.17.0 |
+| Isaac Lab | vendor 源码快照，editable | commit 46d6cc3 |
+| Newton | vendor 源码快照，editable | commit 71eeba1 |
+| TG SuperMimic | 当前仓库，editable | 当前 Git 提交 |
+
+固定源码包及校验值见 `vendor/manifest.json`。安装器解压到 `IsaacLab/` 和
+`.vendor/newton/`；这些是源码快照，不是新的 Git clone。不要随意切换成最新 release。
+版本号、源码提交和资源路径影响兼容性，安装方式本身并不能保证与服务器一致。
+
+优先创建仓库默认 `.conda`，避免覆盖旧的 `supermimic` 环境。配置好 Python 依赖后，
+仍需验收 GPU、真实环境步进及一次包含 Actor/Critic 更新的短训。
 
 ## 安装
 
@@ -23,7 +46,7 @@ bash /tmp/Miniforge3.sh
 ```
 
 ```bash
-git clone -b mimic git@git.x-humanoid-cloud.com:silence143/tg_supermimic.git
+git clone -b bc_100hz_dev git@github.com:wenhan10086/supermimic.git
 cd tg_supermimic
 bash scripts/setup/setup.sh
 ```
