@@ -1,0 +1,85 @@
+{
+  "baseline_commit": "c0bd65f",
+  "branch": "refactor/isaaclab-layout",
+  "pytest": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "33",
+    "time": "6.116",
+    "timestamp": "2026-11-11T19:30:40.603776+08:00",
+    "hostname": "mig-amd"
+  },
+  "checks": {
+    "relocated_paths": 62,
+    "unchanged_source_ast_modules": 15,
+    "bundled_asset_checksums": 158,
+    "undefined_names_and_syntax": "ruff F821,F822,F823,E9 passed",
+    "shell_syntax": "all tracked root/scripts/experiments shell scripts passed",
+    "markdown_links": "all README and docs relative file links resolved",
+    "editable_install": "passed in isolated temporary venv, no dependencies changed",
+    "source_wheel": "built offline, 74605 bytes, 29 entries, excludes data/vendor/logs",
+    "installed_console_entry_points": "tg-train and tg-evaluate --help passed using a Lab CLI stub",
+    "robot_contracts": "G1/default and Tiangong/default,dexevt PD, action scales, joints, self collision and assets match baseline; actual MJCFs parsed on CPU"
+  },
+  "real_checkpoint": {
+    "checkpoint": "/home/mig/tg_supermimic/logs/deployment_20261111/tg_full_wbc_pool/020000/ckpt_020000.pt",
+    "iteration": 20000,
+    "policy_strict_load": true,
+    "wm_strict_load": true,
+    "policy_max_abs_difference": 0.0,
+    "wm_max_abs_difference": 0.0,
+    "samples": 8,
+    "scope": "Real saved full-WBC weights, CPU float32 inference; simulator imports stubbed. Not a live resume test."
+  },
+  "tensor_checks": {
+    "wm": {
+      "output_35_error_70_stats_and_checkpoint_roundtrip": true,
+      "integration_matches_1_2_4_8_substeps_and_world_frame_rotation": true,
+      "zero_delta_is_constant_velocity_motion": true,
+      "12_48_step_network_and_action_gradients_finite_nonzero": true,
+      "integrated_step_dynamo_fullgraph_cpu": true,
+      "history_h1_h2_h10_reset_buffer_wrap_and_unpadded_rng": true,
+      "training_wiring_and_syntax": true,
+      "scope": "CPU tensor/gradient/graph tests, small networks; no full simulator or multi-GPU training test"
+    },
+    "diagnostics": {
+      "masked_loss_additivity_shares_physical_units_scales_and_detachment": true,
+      "channel_count_weighting_is_preserved": true,
+      "unequal_batches_masks_scales_rank_reduction_and_zero_valid": true,
+      "state_delta_12_step_loss_gradients_and_adam_updates_bitwise_unchanged": true,
+      "velocity_integrated_12_step_loss_gradients_and_adam_updates_bitwise_unchanged": true,
+      "compiled_loss_fullgraph_and_all_batch_logging_matches_training_loss": true,
+      "existing_csv_positions_preserved_new_fields_appended": true,
+      "actual_terminal_output_and_388_tensorboard_scalar_roundtrips": true,
+      "scope": "CPU real tensor/optimizer checks and simulated all_reduce; no live simulator, CUDA performance or multi-rank runtime claim"
+    },
+    "sampling_and_critic": {
+      "duplicate_returns_order_invariant_unique_and_empty_updates": true,
+      "actual_env_step_aggregates_shared_start_bin": true,
+      "real_reset_sampler_excludes_last_frame_only_bin_dense_and_pool": true,
+      "fast_path_seeded_equal_exact_fallback_uniform_wrap_and_no_valid_error": true,
+      "critic_weighted_all_minibatch_and_rank_sum_aggregation": true,
+      "actual_20_minibatch_updates_bitwise_unchanged_and_metrics_match": true,
+      "scope": "CPU source-level numerical/regression checks; no real simulator, CUDA or multi-rank runtime test"
+    }
+  },
+  "not_verified": [
+    "Pinned Isaac Lab/Newton simulator execution",
+    "CUDA performance and multi-rank NCCL training",
+    "Full simulator checkpoint resume"
+  ],
+  "reason": "Local environment has no pinned isaaclab/newton packages and NVIDIA driver is unavailable.",
+  "installed_worktree_pytest": {
+    "name": "pytest",
+    "errors": "0",
+    "failures": "0",
+    "skipped": "0",
+    "tests": "33",
+    "time": "6.111",
+    "timestamp": "2026-11-11T19:35:37.850024+08:00",
+    "hostname": "mig-amd"
+  },
+  "verified_at": "2026-11-11T19:36:27.408737+08:00"
+}

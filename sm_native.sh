@@ -26,10 +26,11 @@ elif [ -x "$PWD/.conda/bin/python" ]; then
 elif [ -n "${CONDA_PREFIX:-}" ] && [ -x "$CONDA_PREFIX/bin/python" ]; then
     PY=$CONDA_PREFIX/bin/python
 else
-    echo "Run bash tools/setup.sh first, or set SM_PYTHON to your Conda Python." >&2
+    echo "Run bash scripts/setup/setup.sh first, or set SM_PYTHON to your Conda Python." >&2
     exit 1
 fi
 export SM_PYTHON=$PY
+export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"
 [ -x "$PY" ] || { echo "error: Python not found at $PY (set SM_PYTHON)" >&2; exit 1; }
 export PATH="$(dirname "$PY"):$PATH" PYTHONUNBUFFERED=1
 export MPLCONFIGDIR=${MPLCONFIGDIR:-$PWD/.cache/matplotlib}
@@ -45,7 +46,7 @@ free_port() {
     echo "$p"
 }
 
-train_pids() { pgrep -f "supermimic/train.py --log_dir logs/$1( |\$)" | paste -sd, || true; }
+train_pids() { pgrep -f "(scripts/training/train.py|supermimic/train.py) --log_dir logs/$1( |\$)" | paste -sd, || true; }
 
 cmd_train() {
     [ $# -gt 0 ] || die "usage: ./sm_native.sh train <run> [options] [train.py args...]"
@@ -104,7 +105,7 @@ cmd__train() {  # body of the tmux session
     trap "[ -n '$tb_pid' ] && kill '$tb_pid' 2>/dev/null; true" EXIT
     echo "SuperMimic train: run $run | robot $robot | GPU $gpu | TensorBoard ${SUPERMIMIC_TB_URL:-off}"
     echo "  Ctrl+C: stop after the current iteration and save a checkpoint | Ctrl+B then D: leave it running"
-    local cmd=("$PY" supermimic/train.py --log_dir "logs/$run" "${pass[@]}")
+    local cmd=("$PY" scripts/training/train.py --log_dir "logs/$run" "${pass[@]}")
     if [ ${#gpus[@]} = 1 ]; then
         CUDA_VISIBLE_DEVICES=$gpu "${cmd[@]}" 2>&1 | tee -a "logs/$run/stdout.log"
         return
@@ -132,7 +133,7 @@ cmd__train() {  # body of the tmux session
     done
     if [ $st != 0 ]; then
         echo "A training process exited with status $st; stopping all ranks (see logs/$run/rank*.log)"
-        pkill -KILL -f "supermimic/train.py --log_dir logs/$run( |\$)" || true
+        pkill -KILL -f "(scripts/training/train.py|supermimic/train.py) --log_dir logs/$run( |\$)" || true
         wait "${ranks[@]}" 2>/dev/null || true
         return "$st"
     fi

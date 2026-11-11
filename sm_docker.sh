@@ -40,7 +40,7 @@ base_args() {
     mkdir -p .cache/remote_assets
     BASE=(--rm --init --user "$(id -u):$(id -g)" -e HOME="$home" -e TINI_KILL_PROCESS_GROUP=1
         -e WARP_CACHE_PATH=/workspace/supermimic/.cache/warp -e TORCHINDUCTOR_CACHE_DIR=/workspace/supermimic/.cache/inductor
-        -e MPLCONFIGDIR=/tmp/mpl -v "$REPO":/workspace/supermimic -v "$REPO/.cache/remote_assets":/tmp/https
+        -e PYTHONPATH=/workspace/supermimic/src -e MPLCONFIGDIR=/tmp/mpl -v "$REPO":/workspace/supermimic -v "$REPO/.cache/remote_assets":/tmp/https
         -w /workspace/supermimic)
     if [ -t 0 ] && [ -t 1 ]; then TTY=(-it); else TTY=(-i); fi
 }
@@ -79,7 +79,7 @@ cmd_train() {
     fi
     local quoted=""
     [ ${#pass[@]} -gt 0 ] && quoted=$(printf '%q ' "${pass[@]}")
-    inner+="python supermimic/train.py --log_dir logs/$run ${quoted}2>&1 | tee -a logs/$run/stdout.log; exit \${PIPESTATUS[0]}"
+    inner+="python scripts/training/train.py --log_dir logs/$run ${quoted}2>&1 | tee -a logs/$run/stdout.log; exit \${PIPESTATUS[0]}"
     local cpus=()
     [ -n "${CPUS:-}" ] && cpus=(--cpuset-cpus "$CPUS")
 

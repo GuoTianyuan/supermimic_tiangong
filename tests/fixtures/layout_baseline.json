@@ -1,0 +1,1908 @@
+{
+  "base_commit": "c0bd65f",
+  "cli": [
+    {
+      "dest": "help",
+      "options": [
+        "-h",
+        "--help"
+      ],
+      "default": "==SUPPRESS==",
+      "nargs": 0,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": null,
+      "action": "_HelpAction"
+    },
+    {
+      "dest": "num_envs",
+      "options": [
+        "--num_envs"
+      ],
+      "default": 4096,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "iterations",
+      "options": [
+        "--iterations"
+      ],
+      "default": 320000,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "buffer_steps",
+      "options": [
+        "--buffer_steps"
+      ],
+      "default": 1000,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "utd",
+      "options": [
+        "--utd"
+      ],
+      "default": 0.4,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "horizon",
+      "options": [
+        "--horizon"
+      ],
+      "default": 48,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "goal_frames",
+      "options": [
+        "--goal_frames"
+      ],
+      "default": 10,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "goal_drop",
+      "options": [
+        "--goal_drop"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "hist",
+      "options": [
+        "--hist"
+      ],
+      "default": 10,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "wm_window",
+      "options": [
+        "--wm_window"
+      ],
+      "default": 12,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "wm_prediction",
+      "options": [
+        "--wm_prediction"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": [
+        "state_delta",
+        "velocity_integrated"
+      ],
+      "required": false,
+      "type": null,
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "wm_batches",
+      "options": [
+        "--wm_batches"
+      ],
+      "default": 10,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "wm_batch",
+      "options": [
+        "--wm_batch"
+      ],
+      "default": 2048,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "pi_batch",
+      "options": [
+        "--pi_batch"
+      ],
+      "default": 4096,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "lr",
+      "options": [
+        "--lr"
+      ],
+      "default": 0.0002,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "gamma",
+      "options": [
+        "--gamma"
+      ],
+      "default": 0.995,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "lam",
+      "options": [
+        "--lam"
+      ],
+      "default": 0.95,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "action_noise",
+      "options": [
+        "--action_noise"
+      ],
+      "default": 0.1,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "critic_epochs",
+      "options": [
+        "--critic_epochs"
+      ],
+      "default": 5,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "critic_minibatches",
+      "options": [
+        "--critic_minibatches"
+      ],
+      "default": 4,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "critic_tau",
+      "options": [
+        "--critic_tau"
+      ],
+      "default": 0.05,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "no_critic",
+      "options": [
+        "--no_critic"
+      ],
+      "default": false,
+      "nargs": 0,
+      "const": true,
+      "choices": null,
+      "required": false,
+      "type": null,
+      "action": "_StoreTrueAction"
+    },
+    {
+      "dest": "critic_layer_norm",
+      "options": [
+        "--critic_layer_norm",
+        "--no-critic_layer_norm"
+      ],
+      "default": null,
+      "nargs": 0,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": null,
+      "action": "BooleanOptionalAction"
+    },
+    {
+      "dest": "act_soft_clip",
+      "options": [
+        "--act_soft_clip",
+        "--no-act_soft_clip"
+      ],
+      "default": null,
+      "nargs": 0,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": null,
+      "action": "BooleanOptionalAction"
+    },
+    {
+      "dest": "act_norm",
+      "options": [
+        "--act_norm"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": [
+        "ref",
+        "running"
+      ],
+      "required": false,
+      "type": null,
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "reset_a_prev",
+      "options": [
+        "--reset_a_prev"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": [
+        "pose",
+        "zero"
+      ],
+      "required": false,
+      "type": null,
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "detach_a_prev",
+      "options": [
+        "--detach_a_prev"
+      ],
+      "default": false,
+      "nargs": 0,
+      "const": true,
+      "choices": null,
+      "required": false,
+      "type": null,
+      "action": "_StoreTrueAction"
+    },
+    {
+      "dest": "reset_temp",
+      "options": [
+        "--reset_temp"
+      ],
+      "default": 25.0,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "motion_active_ratio",
+      "options": [
+        "--motion_active_ratio"
+      ],
+      "default": 1.0,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "motion_refresh_iters",
+      "options": [
+        "--motion_refresh_iters"
+      ],
+      "default": 1500,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "motion_replace_ratio",
+      "options": [
+        "--motion_replace_ratio"
+      ],
+      "default": 0.25,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "float",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "motion_stats_cache",
+      "options": [
+        "--motion_stats_cache"
+      ],
+      "default": "<ROOT>/.cache/motion_pool",
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": null,
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "motion_exclude",
+      "options": [
+        "--motion_exclude"
+      ],
+      "default": "",
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "warmup_steps",
+      "options": [
+        "--warmup_steps"
+      ],
+      "default": 64,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "wm_only_iters",
+      "options": [
+        "--wm_only_iters"
+      ],
+      "default": 500,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "lr_decay_iters",
+      "options": [
+        "--lr_decay_iters"
+      ],
+      "default": 250000,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "ckpt_every",
+      "options": [
+        "--ckpt_every"
+      ],
+      "default": 2000,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "log_every",
+      "options": [
+        "--log_every"
+      ],
+      "default": 50,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "motion_dir",
+      "options": [
+        "--motion_dir"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "log_dir",
+      "options": [
+        "--log_dir"
+      ],
+      "default": "<ROOT>/logs/run",
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "seed",
+      "options": [
+        "--seed"
+      ],
+      "default": 0,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "resume",
+      "options": [
+        "--resume"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "amp",
+      "options": [
+        "--amp"
+      ],
+      "default": "bf16",
+      "nargs": null,
+      "const": null,
+      "choices": [
+        "none",
+        "bf16"
+      ],
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "robot",
+      "options": [
+        "--robot"
+      ],
+      "default": "g1",
+      "nargs": null,
+      "const": null,
+      "choices": [
+        "g1",
+        "tiangong3"
+      ],
+      "required": false,
+      "type": null,
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "dr",
+      "options": [
+        "--dr"
+      ],
+      "default": "",
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "dr_curriculum",
+      "options": [
+        "--dr_curriculum"
+      ],
+      "default": "",
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "str",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "dr_ramp",
+      "options": [
+        "--dr_ramp"
+      ],
+      "default": 2000,
+      "nargs": null,
+      "const": null,
+      "choices": null,
+      "required": false,
+      "type": "int",
+      "action": "_StoreAction"
+    },
+    {
+      "dest": "dynamics",
+      "options": [
+        "--dynamics"
+      ],
+      "default": null,
+      "nargs": null,
+      "const": null,
+      "choices": [
+        "default",
+        "dexevt"
+      ],
+      "required": false,
+      "type": null,
+      "action": "_StoreAction"
+    }
+  ],
+  "ast": {
+    "supermimic/dr.py": "3ee2c6a204d2fd064418ac679d2f3eb2baf9a211b6f91713143aee4661c124d8",
+    "supermimic/env.py": "4f162af2775581dc62f6cf955066a6ced7113eb0118158ef2268ea0550fdb67a",
+    "supermimic/rotations.py": "8dd852aa2f2dd264a5593f96989cbdbd2d181da3559858ace5cb51802a8283bc",
+    "supermimic/tiangong3.py": "19b79cba6324d6afaafd2ca50048a5daeea0794bcad5556136423fb8e90acb61",
+    "supermimic/motion_pool.py": "af3d166cafa73f239b78f2bea610eba6d56c19d66c1c828de5e9faa3a63d429c",
+    "supermimic/kinematics.py": "51d5cc5233b8bc83c511ab2a3280e6fb3e4b3cf3c6d2fb06d78ebf7590a15e56",
+    "supermimic/mdp.py": "cfe9b779e5d32cae157bb02bd49fc97c903457691058f3b5bd03eb6955be0774",
+    "supermimic/train.py": "5125c0146f68f34be00b53b13c62505c63c17038575c625575cd819d986d8afd",
+    "supermimic/buffer.py": "9acdbbaf9b4ccb7a2dac2118303be3bffa3d49609cd2642c9a671b6f64cfe283",
+    "supermimic/diagnostics.py": "dd2ab32126bbf0febb09c3655f183bf7df8e3d0acf199cee8b4d8d84f05ee62a",
+    "supermimic/robot.py": "56923610b8cdbca2da237b4a44381f9a92eeab104b1f3b07fc00a12e887c7569",
+    "supermimic/networks.py": "d524fe645a6e0fb3f5fd0337126c041064232c8504f8d5cbf6c723c907323258",
+    "supermimic/sampling.py": "2534c08c65526b94b794376f7c05558df2814793f2a7061e3a2467c4206c7dd5",
+    "supermimic/evaluate.py": "97465dfb13af7c88c4118c687a85433e2b0ca14c4e84650e3313778e0909a06e",
+    "supermimic/motion.py": "effcda1d76fc9708bc136bbe3a2f0037064c9e2ad33c5bd19a593d3db0c621b6"
+  },
+  "robots": {
+    "g1/default": {
+      "joint_names": [
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint",
+        "waist_yaw_joint",
+        "waist_roll_joint",
+        "waist_pitch_joint",
+        "left_shoulder_pitch_joint",
+        "left_shoulder_roll_joint",
+        "left_shoulder_yaw_joint",
+        "left_elbow_joint",
+        "left_wrist_roll_joint",
+        "left_wrist_pitch_joint",
+        "left_wrist_yaw_joint",
+        "right_shoulder_pitch_joint",
+        "right_shoulder_roll_joint",
+        "right_shoulder_yaw_joint",
+        "right_elbow_joint",
+        "right_wrist_roll_joint",
+        "right_wrist_pitch_joint",
+        "right_wrist_yaw_joint"
+      ],
+      "tracked_bodies": [
+        "pelvis",
+        "left_hip_roll_link",
+        "left_knee_link",
+        "left_ankle_roll_link",
+        "right_hip_roll_link",
+        "right_knee_link",
+        "right_ankle_roll_link",
+        "torso_link",
+        "left_shoulder_roll_link",
+        "left_elbow_link",
+        "left_wrist_yaw_link",
+        "right_shoulder_roll_link",
+        "right_elbow_link",
+        "right_wrist_yaw_link"
+      ],
+      "q0": [
+        -0.312,
+        0.0,
+        0.0,
+        0.669,
+        -0.363,
+        0.0,
+        -0.312,
+        0.0,
+        0.0,
+        0.669,
+        -0.363,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.2,
+        0.2,
+        0.0,
+        0.6,
+        0.0,
+        0.0,
+        0.0,
+        0.2,
+        -0.2,
+        0.0,
+        0.6,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "action_scale": [
+        0.5475464652142303,
+        0.3506614663788243,
+        0.5475464652142303,
+        0.3506614663788243,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.5475464652142303,
+        0.3506614663788243,
+        0.5475464652142303,
+        0.3506614663788243,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.5475464652142303,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.07450087032950714,
+        0.07450087032950714,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.43857731392336724,
+        0.07450087032950714,
+        0.07450087032950714
+      ],
+      "actuators": {
+        "left_hip_pitch": {
+          "joint_names_expr": [
+            "left_hip_pitch_joint"
+          ],
+          "effort_limit_sim": 88.0,
+          "velocity_limit_sim": 32.0,
+          "stiffness": 40.17923847137318,
+          "damping": 2.5578897650279457,
+          "armature": 0.01017752
+        },
+        "left_hip_roll": {
+          "joint_names_expr": [
+            "left_hip_roll_joint"
+          ],
+          "effort_limit_sim": 139.0,
+          "velocity_limit_sim": 20.0,
+          "stiffness": 99.09842777666113,
+          "damping": 6.3088018534966395,
+          "armature": 0.025101925
+        },
+        "left_hip_yaw": {
+          "joint_names_expr": [
+            "left_hip_yaw_joint"
+          ],
+          "effort_limit_sim": 88.0,
+          "velocity_limit_sim": 32.0,
+          "stiffness": 40.17923847137318,
+          "damping": 2.5578897650279457,
+          "armature": 0.01017752
+        },
+        "left_knee": {
+          "joint_names_expr": [
+            "left_knee_joint"
+          ],
+          "effort_limit_sim": 139.0,
+          "velocity_limit_sim": 20.0,
+          "stiffness": 99.09842777666113,
+          "damping": 6.3088018534966395,
+          "armature": 0.025101925
+        },
+        "left_ankle_pitch": {
+          "joint_names_expr": [
+            "left_ankle_pitch_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 28.50124619574858,
+          "damping": 1.814445686584846,
+          "armature": 0.00721945
+        },
+        "left_ankle_roll": {
+          "joint_names_expr": [
+            "left_ankle_roll_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 28.50124619574858,
+          "damping": 1.814445686584846,
+          "armature": 0.00721945
+        },
+        "right_hip_pitch": {
+          "joint_names_expr": [
+            "right_hip_pitch_joint"
+          ],
+          "effort_limit_sim": 88.0,
+          "velocity_limit_sim": 32.0,
+          "stiffness": 40.17923847137318,
+          "damping": 2.5578897650279457,
+          "armature": 0.01017752
+        },
+        "right_hip_roll": {
+          "joint_names_expr": [
+            "right_hip_roll_joint"
+          ],
+          "effort_limit_sim": 139.0,
+          "velocity_limit_sim": 20.0,
+          "stiffness": 99.09842777666113,
+          "damping": 6.3088018534966395,
+          "armature": 0.025101925
+        },
+        "right_hip_yaw": {
+          "joint_names_expr": [
+            "right_hip_yaw_joint"
+          ],
+          "effort_limit_sim": 88.0,
+          "velocity_limit_sim": 32.0,
+          "stiffness": 40.17923847137318,
+          "damping": 2.5578897650279457,
+          "armature": 0.01017752
+        },
+        "right_knee": {
+          "joint_names_expr": [
+            "right_knee_joint"
+          ],
+          "effort_limit_sim": 139.0,
+          "velocity_limit_sim": 20.0,
+          "stiffness": 99.09842777666113,
+          "damping": 6.3088018534966395,
+          "armature": 0.025101925
+        },
+        "right_ankle_pitch": {
+          "joint_names_expr": [
+            "right_ankle_pitch_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 28.50124619574858,
+          "damping": 1.814445686584846,
+          "armature": 0.00721945
+        },
+        "right_ankle_roll": {
+          "joint_names_expr": [
+            "right_ankle_roll_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 28.50124619574858,
+          "damping": 1.814445686584846,
+          "armature": 0.00721945
+        },
+        "waist_yaw": {
+          "joint_names_expr": [
+            "waist_yaw_joint"
+          ],
+          "effort_limit_sim": 88.0,
+          "velocity_limit_sim": 32.0,
+          "stiffness": 40.17923847137318,
+          "damping": 2.5578897650279457,
+          "armature": 0.01017752
+        },
+        "waist_roll": {
+          "joint_names_expr": [
+            "waist_roll_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 28.50124619574858,
+          "damping": 1.814445686584846,
+          "armature": 0.00721945
+        },
+        "waist_pitch": {
+          "joint_names_expr": [
+            "waist_pitch_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 28.50124619574858,
+          "damping": 1.814445686584846,
+          "armature": 0.00721945
+        },
+        "left_shoulder_pitch": {
+          "joint_names_expr": [
+            "left_shoulder_pitch_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "left_shoulder_roll": {
+          "joint_names_expr": [
+            "left_shoulder_roll_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "left_shoulder_yaw": {
+          "joint_names_expr": [
+            "left_shoulder_yaw_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "left_elbow": {
+          "joint_names_expr": [
+            "left_elbow_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "left_wrist_roll": {
+          "joint_names_expr": [
+            "left_wrist_roll_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "left_wrist_pitch": {
+          "joint_names_expr": [
+            "left_wrist_pitch_joint"
+          ],
+          "effort_limit_sim": 5.0,
+          "velocity_limit_sim": 22.0,
+          "stiffness": 16.77832748089279,
+          "damping": 1.06814150219,
+          "armature": 0.00425
+        },
+        "left_wrist_yaw": {
+          "joint_names_expr": [
+            "left_wrist_yaw_joint"
+          ],
+          "effort_limit_sim": 5.0,
+          "velocity_limit_sim": 22.0,
+          "stiffness": 16.77832748089279,
+          "damping": 1.06814150219,
+          "armature": 0.00425
+        },
+        "right_shoulder_pitch": {
+          "joint_names_expr": [
+            "right_shoulder_pitch_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "right_shoulder_roll": {
+          "joint_names_expr": [
+            "right_shoulder_roll_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "right_shoulder_yaw": {
+          "joint_names_expr": [
+            "right_shoulder_yaw_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "right_elbow": {
+          "joint_names_expr": [
+            "right_elbow_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "right_wrist_roll": {
+          "joint_names_expr": [
+            "right_wrist_roll_joint"
+          ],
+          "effort_limit_sim": 25.0,
+          "velocity_limit_sim": 37.0,
+          "stiffness": 14.25062309787429,
+          "damping": 0.907222843292423,
+          "armature": 0.003609725
+        },
+        "right_wrist_pitch": {
+          "joint_names_expr": [
+            "right_wrist_pitch_joint"
+          ],
+          "effort_limit_sim": 5.0,
+          "velocity_limit_sim": 22.0,
+          "stiffness": 16.77832748089279,
+          "damping": 1.06814150219,
+          "armature": 0.00425
+        },
+        "right_wrist_yaw": {
+          "joint_names_expr": [
+            "right_wrist_yaw_joint"
+          ],
+          "effort_limit_sim": 5.0,
+          "velocity_limit_sim": 22.0,
+          "stiffness": 16.77832748089279,
+          "damping": 1.06814150219,
+          "armature": 0.00425
+        }
+      },
+      "self_collision": false,
+      "friction": [
+        0.3,
+        1.2
+      ],
+      "paths": {
+        "URDF_PATH": "g1_description/g1_29dof_rev_1_0.urdf",
+        "MJCF_PATH": "g1_description/g1_29dof.xml",
+        "USD_PATH": "g1_usd/g1_29dof/g1_29dof.usda"
+      }
+    },
+    "tiangong3/default": {
+      "joint_names": [
+        "hip_pitch_l_joint",
+        "hip_roll_l_joint",
+        "hip_yaw_l_joint",
+        "knee_pitch_l_joint",
+        "ankle_pitch_l_joint",
+        "ankle_roll_l_joint",
+        "hip_pitch_r_joint",
+        "hip_roll_r_joint",
+        "hip_yaw_r_joint",
+        "knee_pitch_r_joint",
+        "ankle_pitch_r_joint",
+        "ankle_roll_r_joint",
+        "waist_yaw_joint",
+        "waist_roll_joint",
+        "waist_pitch_joint",
+        "shoulder_pitch_l_joint",
+        "shoulder_roll_l_joint",
+        "shoulder_yaw_l_joint",
+        "elbow_pitch_l_joint",
+        "elbow_yaw_l_joint",
+        "wrist_pitch_l_joint",
+        "wrist_roll_l_joint",
+        "shoulder_pitch_r_joint",
+        "shoulder_roll_r_joint",
+        "shoulder_yaw_r_joint",
+        "elbow_pitch_r_joint",
+        "elbow_yaw_r_joint",
+        "wrist_pitch_r_joint",
+        "wrist_roll_r_joint"
+      ],
+      "tracked_bodies": [
+        "pelvis",
+        "hip_roll_l_link",
+        "knee_pitch_l_link",
+        "ankle_roll_l_link",
+        "hip_roll_r_link",
+        "knee_pitch_r_link",
+        "ankle_roll_r_link",
+        "waist_pitch_link",
+        "shoulder_roll_l_link",
+        "elbow_pitch_l_link",
+        "wrist_roll_l_link",
+        "shoulder_roll_r_link",
+        "elbow_pitch_r_link",
+        "wrist_roll_r_link"
+      ],
+      "q0": [
+        -0.25,
+        0.0,
+        0.0,
+        0.5,
+        -0.25,
+        0.0,
+        -0.25,
+        0.0,
+        0.0,
+        0.5,
+        -0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.3,
+        0.0,
+        -0.3,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -0.3,
+        0.0,
+        -0.3,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "action_scale": [
+        0.13055555555555556,
+        0.13055555555555556,
+        0.11363636363636363,
+        0.19607843137254902,
+        0.5,
+        0.5,
+        0.13055555555555556,
+        0.13055555555555556,
+        0.11363636363636363,
+        0.19607843137254902,
+        0.5,
+        0.5,
+        0.06791044776119402,
+        0.11194029850746269,
+        0.11194029850746269,
+        0.45,
+        0.45,
+        0.2777777777777778,
+        0.2777777777777778,
+        0.2,
+        0.2,
+        0.2,
+        0.45,
+        0.45,
+        0.2777777777777778,
+        0.2777777777777778,
+        0.2,
+        0.2,
+        0.2
+      ],
+      "actuators": {
+        "hip_pitch_l_joint": {
+          "joint_names_expr": [
+            "hip_pitch_l_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_roll_l_joint": {
+          "joint_names_expr": [
+            "hip_roll_l_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_yaw_l_joint": {
+          "joint_names_expr": [
+            "hip_yaw_l_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 660.0,
+          "damping": 42.0,
+          "armature": 0.031
+        },
+        "knee_pitch_l_joint": {
+          "joint_names_expr": [
+            "knee_pitch_l_joint"
+          ],
+          "effort_limit_sim": 400.0,
+          "velocity_limit_sim": 11.100294042683936,
+          "stiffness": 1020.0,
+          "damping": 72.0,
+          "armature": 0.031
+        },
+        "ankle_pitch_l_joint": {
+          "joint_names_expr": [
+            "ankle_pitch_l_joint"
+          ],
+          "effort_limit_sim": 100.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.035
+        },
+        "ankle_roll_l_joint": {
+          "joint_names_expr": [
+            "ankle_roll_l_joint"
+          ],
+          "effort_limit_sim": 100.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.035
+        },
+        "hip_pitch_r_joint": {
+          "joint_names_expr": [
+            "hip_pitch_r_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_roll_r_joint": {
+          "joint_names_expr": [
+            "hip_roll_r_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_yaw_r_joint": {
+          "joint_names_expr": [
+            "hip_yaw_r_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 660.0,
+          "damping": 42.0,
+          "armature": 0.031
+        },
+        "knee_pitch_r_joint": {
+          "joint_names_expr": [
+            "knee_pitch_r_joint"
+          ],
+          "effort_limit_sim": 400.0,
+          "velocity_limit_sim": 11.100294042683936,
+          "stiffness": 1020.0,
+          "damping": 72.0,
+          "armature": 0.031
+        },
+        "ankle_pitch_r_joint": {
+          "joint_names_expr": [
+            "ankle_pitch_r_joint"
+          ],
+          "effort_limit_sim": 100.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.035
+        },
+        "ankle_roll_r_joint": {
+          "joint_names_expr": [
+            "ankle_roll_r_joint"
+          ],
+          "effort_limit_sim": 100.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.035
+        },
+        "waist_yaw_joint": {
+          "joint_names_expr": [
+            "waist_yaw_joint"
+          ],
+          "effort_limit_sim": 91.0,
+          "velocity_limit_sim": 9.42477796076938,
+          "stiffness": 670.0,
+          "damping": 41.0,
+          "armature": 0.031
+        },
+        "waist_roll_joint": {
+          "joint_names_expr": [
+            "waist_roll_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 670.0,
+          "damping": 41.0,
+          "armature": 0.031
+        },
+        "waist_pitch_joint": {
+          "joint_names_expr": [
+            "waist_pitch_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 670.0,
+          "damping": 41.0,
+          "armature": 0.031
+        },
+        "shoulder_pitch_l_joint": {
+          "joint_names_expr": [
+            "shoulder_pitch_l_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_roll_l_joint": {
+          "joint_names_expr": [
+            "shoulder_roll_l_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_yaw_l_joint": {
+          "joint_names_expr": [
+            "shoulder_yaw_l_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_pitch_l_joint": {
+          "joint_names_expr": [
+            "elbow_pitch_l_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_yaw_l_joint": {
+          "joint_names_expr": [
+            "elbow_yaw_l_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_pitch_l_joint": {
+          "joint_names_expr": [
+            "wrist_pitch_l_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_roll_l_joint": {
+          "joint_names_expr": [
+            "wrist_roll_l_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "shoulder_pitch_r_joint": {
+          "joint_names_expr": [
+            "shoulder_pitch_r_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_roll_r_joint": {
+          "joint_names_expr": [
+            "shoulder_roll_r_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_yaw_r_joint": {
+          "joint_names_expr": [
+            "shoulder_yaw_r_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_pitch_r_joint": {
+          "joint_names_expr": [
+            "elbow_pitch_r_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_yaw_r_joint": {
+          "joint_names_expr": [
+            "elbow_yaw_r_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_pitch_r_joint": {
+          "joint_names_expr": [
+            "wrist_pitch_r_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_roll_r_joint": {
+          "joint_names_expr": [
+            "wrist_roll_r_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        }
+      },
+      "self_collision": true,
+      "friction": [
+        0.6,
+        1.6
+      ],
+      "paths": {
+        "URDF_PATH": "tiangong3_urdf/urdf/tiangong3.urdf",
+        "MJCF_PATH": "tiangong3_generated/tiangong3.xml",
+        "USD_PATH": "tiangong3_usd/tiangong3/tiangong3.usda"
+      }
+    },
+    "tiangong3/dexevt": {
+      "joint_names": [
+        "hip_pitch_l_joint",
+        "hip_roll_l_joint",
+        "hip_yaw_l_joint",
+        "knee_pitch_l_joint",
+        "ankle_pitch_l_joint",
+        "ankle_roll_l_joint",
+        "hip_pitch_r_joint",
+        "hip_roll_r_joint",
+        "hip_yaw_r_joint",
+        "knee_pitch_r_joint",
+        "ankle_pitch_r_joint",
+        "ankle_roll_r_joint",
+        "waist_yaw_joint",
+        "waist_roll_joint",
+        "waist_pitch_joint",
+        "shoulder_pitch_l_joint",
+        "shoulder_roll_l_joint",
+        "shoulder_yaw_l_joint",
+        "elbow_pitch_l_joint",
+        "elbow_yaw_l_joint",
+        "wrist_pitch_l_joint",
+        "wrist_roll_l_joint",
+        "shoulder_pitch_r_joint",
+        "shoulder_roll_r_joint",
+        "shoulder_yaw_r_joint",
+        "elbow_pitch_r_joint",
+        "elbow_yaw_r_joint",
+        "wrist_pitch_r_joint",
+        "wrist_roll_r_joint"
+      ],
+      "tracked_bodies": [
+        "pelvis",
+        "hip_roll_l_link",
+        "knee_pitch_l_link",
+        "ankle_roll_l_link",
+        "hip_roll_r_link",
+        "knee_pitch_r_link",
+        "ankle_roll_r_link",
+        "waist_pitch_link",
+        "shoulder_roll_l_link",
+        "elbow_pitch_l_link",
+        "wrist_roll_l_link",
+        "shoulder_roll_r_link",
+        "elbow_pitch_r_link",
+        "wrist_roll_r_link"
+      ],
+      "q0": [
+        -0.25,
+        0.0,
+        0.0,
+        0.5,
+        -0.25,
+        0.0,
+        -0.25,
+        0.0,
+        0.0,
+        0.5,
+        -0.25,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.3,
+        0.0,
+        -0.3,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        -0.3,
+        0.0,
+        -0.3,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "action_scale": [
+        0.13055555555555556,
+        0.13055555555555556,
+        0.11363636363636363,
+        0.19607843137254902,
+        0.5,
+        0.5,
+        0.13055555555555556,
+        0.13055555555555556,
+        0.11363636363636363,
+        0.19607843137254902,
+        0.5,
+        0.5,
+        0.06791044776119402,
+        0.11194029850746269,
+        0.11194029850746269,
+        0.45,
+        0.45,
+        0.2777777777777778,
+        0.2777777777777778,
+        0.2,
+        0.2,
+        0.2,
+        0.45,
+        0.45,
+        0.2777777777777778,
+        0.2777777777777778,
+        0.2,
+        0.2,
+        0.2
+      ],
+      "actuators": {
+        "hip_pitch_l_joint": {
+          "joint_names_expr": [
+            "hip_pitch_l_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_roll_l_joint": {
+          "joint_names_expr": [
+            "hip_roll_l_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_yaw_l_joint": {
+          "joint_names_expr": [
+            "hip_yaw_l_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 660.0,
+          "damping": 42.0,
+          "armature": 0.031
+        },
+        "knee_pitch_l_joint": {
+          "joint_names_expr": [
+            "knee_pitch_l_joint"
+          ],
+          "effort_limit_sim": 400.0,
+          "velocity_limit_sim": 11.100294042683936,
+          "stiffness": 1020.0,
+          "damping": 72.0,
+          "armature": 0.031
+        },
+        "ankle_pitch_l_joint": {
+          "joint_names_expr": [
+            "ankle_pitch_l_joint"
+          ],
+          "effort_limit_sim": 55.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.031
+        },
+        "ankle_roll_l_joint": {
+          "joint_names_expr": [
+            "ankle_roll_l_joint"
+          ],
+          "effort_limit_sim": 55.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.031
+        },
+        "hip_pitch_r_joint": {
+          "joint_names_expr": [
+            "hip_pitch_r_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_roll_r_joint": {
+          "joint_names_expr": [
+            "hip_roll_r_joint"
+          ],
+          "effort_limit_sim": 235.0,
+          "velocity_limit_sim": 16.755160819145562,
+          "stiffness": 900.0,
+          "damping": 57.0,
+          "armature": 0.031
+        },
+        "hip_yaw_r_joint": {
+          "joint_names_expr": [
+            "hip_yaw_r_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 660.0,
+          "damping": 42.0,
+          "armature": 0.031
+        },
+        "knee_pitch_r_joint": {
+          "joint_names_expr": [
+            "knee_pitch_r_joint"
+          ],
+          "effort_limit_sim": 400.0,
+          "velocity_limit_sim": 11.100294042683936,
+          "stiffness": 1020.0,
+          "damping": 72.0,
+          "armature": 0.031
+        },
+        "ankle_pitch_r_joint": {
+          "joint_names_expr": [
+            "ankle_pitch_r_joint"
+          ],
+          "effort_limit_sim": 55.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.031
+        },
+        "ankle_roll_r_joint": {
+          "joint_names_expr": [
+            "ankle_roll_r_joint"
+          ],
+          "effort_limit_sim": 55.0,
+          "velocity_limit_sim": 14.137166941154069,
+          "stiffness": 55.0,
+          "damping": 3.4,
+          "armature": 0.031
+        },
+        "waist_yaw_joint": {
+          "joint_names_expr": [
+            "waist_yaw_joint"
+          ],
+          "effort_limit_sim": 91.0,
+          "velocity_limit_sim": 9.42477796076938,
+          "stiffness": 670.0,
+          "damping": 41.0,
+          "armature": 0.031
+        },
+        "waist_roll_joint": {
+          "joint_names_expr": [
+            "waist_roll_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 670.0,
+          "damping": 41.0,
+          "armature": 0.031
+        },
+        "waist_pitch_joint": {
+          "joint_names_expr": [
+            "waist_pitch_joint"
+          ],
+          "effort_limit_sim": 150.0,
+          "velocity_limit_sim": 13.82300767579509,
+          "stiffness": 670.0,
+          "damping": 41.0,
+          "armature": 0.031
+        },
+        "shoulder_pitch_l_joint": {
+          "joint_names_expr": [
+            "shoulder_pitch_l_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_roll_l_joint": {
+          "joint_names_expr": [
+            "shoulder_roll_l_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_yaw_l_joint": {
+          "joint_names_expr": [
+            "shoulder_yaw_l_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_pitch_l_joint": {
+          "joint_names_expr": [
+            "elbow_pitch_l_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_yaw_l_joint": {
+          "joint_names_expr": [
+            "elbow_yaw_l_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_pitch_l_joint": {
+          "joint_names_expr": [
+            "wrist_pitch_l_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_roll_l_joint": {
+          "joint_names_expr": [
+            "wrist_roll_l_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "shoulder_pitch_r_joint": {
+          "joint_names_expr": [
+            "shoulder_pitch_r_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_roll_r_joint": {
+          "joint_names_expr": [
+            "shoulder_roll_r_joint"
+          ],
+          "effort_limit_sim": 90.0,
+          "velocity_limit_sim": 7.218332720398149,
+          "stiffness": 100.0,
+          "damping": 7.4,
+          "armature": 0.031
+        },
+        "shoulder_yaw_r_joint": {
+          "joint_names_expr": [
+            "shoulder_yaw_r_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_pitch_r_joint": {
+          "joint_names_expr": [
+            "elbow_pitch_r_joint"
+          ],
+          "effort_limit_sim": 50.0,
+          "velocity_limit_sim": 11.455294012539582,
+          "stiffness": 90.0,
+          "damping": 5.9,
+          "armature": 0.031
+        },
+        "elbow_yaw_r_joint": {
+          "joint_names_expr": [
+            "elbow_yaw_r_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_pitch_r_joint": {
+          "joint_names_expr": [
+            "wrist_pitch_r_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        },
+        "wrist_roll_r_joint": {
+          "joint_names_expr": [
+            "wrist_roll_r_joint"
+          ],
+          "effort_limit_sim": 40.0,
+          "velocity_limit_sim": 18.325957145940457,
+          "stiffness": 100.0,
+          "damping": 2.4,
+          "armature": 0.031
+        }
+      },
+      "self_collision": true,
+      "friction": [
+        0.6,
+        1.6
+      ],
+      "paths": {
+        "URDF_PATH": "tiangong3_urdf/urdf/tiangong3.urdf",
+        "MJCF_PATH": "tiangong3_generated/tiangong3.xml",
+        "USD_PATH": "tiangong3_usd/tiangong3/tiangong3.usda"
+      }
+    }
+  }
+}

@@ -29,3 +29,13 @@ results/analysis/
 .vendor/
 wheelhouse/
 !data/tiangong_motion/*.npz
+
+# Editable installs, local IDE state and tests
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+.vscode/
+
+.history/

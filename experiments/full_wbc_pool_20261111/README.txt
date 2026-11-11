@@ -33,22 +33,22 @@ resident while referenced by an environment or any valid replay row. Rotation re
 bin indices together without clearing replay or cutting episodes. 30% is not a memory cap.
 
 Validation and launch:
-- tools/validate_full_wbc.py: original TG FK/layout validator on every original file.
-- tools/prepare_pool_catalog.py: four CPU full-catalog action-statistic caches and capacity estimates.
-- tools/test_motion_pool.py --compile: circular replay, repeated refresh, exact targets,
+- experiments/full_wbc_pool_20261111/scripts/validate_full_wbc.py: original TG FK/layout validator on every original file.
+- experiments/full_wbc_pool_20261111/scripts/prepare_pool_catalog.py: four CPU full-catalog action-statistic caches and capacity estimates.
+- tests/integration/test_motion_pool.py --compile: circular replay, repeated refresh, exact targets,
   goals, rewards, critic features and gradients; active-only resets; checkpoint restoration.
-- tools/verify_smooth_reward.py and tools/verify_prediction_windows.py: reward math and WM12 masks.
-- tools/run_pool_training.py --smoke: actual simulator/WM/Actor/Critic updates and refresh.
-- tools/stress_pool_rank.py: full rank shard after a 30/20 refresh with EVERY old active clip
+- tests/integration/verify_smooth_reward.py and tests/integration/verify_prediction_windows.py: reward math and WM12 masks.
+- experiments/full_wbc_pool_20261111/scripts/run_pool_training.py --smoke: actual simulator/WM/Actor/Critic updates and refresh.
+- experiments/full_wbc_pool_20261111/scripts/stress_pool_rank.py: full rank shard after a 30/20 refresh with EVERY old active clip
   pinned, then real full-batch learning. This deliberately overestimates first-refresh residency.
-- tools/wait_for_pool_gpus.py: require four GPUs with no compute processes, memory<1GiB,
+- experiments/full_wbc_pool_20261111/scripts/wait_for_pool_gpus.py: require four GPUs with no compute processes, memory<1GiB,
   utilization<5% for three checks; use the same GPU locks as physics-frequency experiments.
-- tools/pool_distributed_preflight.py: once four cards are available, test small four-rank
+- experiments/full_wbc_pool_20261111/scripts/pool_distributed_preflight.py: once four cards are available, test small four-rank
   training, pool rotation, checkpoint and resume before fresh full production training.
   Does not stop existing jobs and does not silently reduce batch sizes or active ratios.
 
 Manual launch after validations and with four free GPUs:
-  python3 tools/run_pool_training.py --gpus 0,1,2,3
+  python3 experiments/full_wbc_pool_20261111/scripts/run_pool_training.py --gpus 0,1,2,3
 Use actual allocated indices; this example does not reserve or free cards.
 
 Interpretation:

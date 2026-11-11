@@ -77,9 +77,9 @@ scalar channels, so larger blocks still count for more. This is source evidence,
 not a claim that the unavailable mjlab_research paper run was reproduced.
 
 Verification:
-  tools/test_wm_loss_diagnostics.py
-  tools/test_wm_prediction_and_history.py
-  tools/test_sampling_and_critic_metrics.py
+  tests/unit/test_wm_loss_diagnostics.py
+  tests/unit/test_wm_prediction_and_history.py
+  tests/unit/test_sampling_and_critic_metrics.py
 See validation.json for CPU checks, exact loss/gradient/Adam comparisons in both
 WM modes, masks, named channels, reductions and TensorBoard event round trips.
 Actual CUDA performance and multi-rank simulator execution were not tested here.

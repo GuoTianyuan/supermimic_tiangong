@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tg-supermimic"
+version = "0.1.0"
+description = "TG SuperMimic motion tracking on the pinned Isaac Lab Newton backend"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "MIT"}
+# The simulator/CUDA dependency graph is installed from requirements-native.lock
+# by scripts/setup/setup.sh. Installing this source package must not replace it.
+
+[project.scripts]
+tg-train = "supermimic.cli:train"
+tg-evaluate = "supermimic.cli:evaluate"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["supermimic*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit"]
+pythonpath = ["src"]
+
+[tool.ruff]
+src = ["src"]
+exclude = ["data", "vendor", "IsaacLab", ".vendor", "logs"]

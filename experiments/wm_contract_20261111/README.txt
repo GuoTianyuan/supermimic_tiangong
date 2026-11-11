@@ -34,7 +34,7 @@ Validated locally before publication on bc_100hz; not deployed to servers and no
    data the 70-D loss scales are exactly equal to the legacy mode. This is not
    a wholesale reproduction of the official loss/network/optimizer setup.
 
-4. CPU checks in tools/test_wm_prediction_and_history.py cover strict old weight
+4. CPU checks in tests/unit/test_wm_prediction_and_history.py cover strict old weight
    compatibility, bitwise default predictions/statistics, 35/70-D statistics,
    checkpoint round trips, 1/2/4/8-substep integration, root-frame transforms,
    constant-velocity motion, 12/48-step action/network gradients, Dynamo fullgraph

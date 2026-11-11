@@ -37,7 +37,7 @@ Critic diagnostics only (optimizer/target equations unchanged):
 - Statistics do not retain computation graphs or affect gradients/optimization.
 
 Tests:
-- tools/test_sampling_and_critic_metrics.py exercises actual env bookkeeping and
+- tests/unit/test_sampling_and_critic_metrics.py exercises actual env bookkeeping and
   reset methods via AST, duplicate/unique/empty updates, dense/pool tail bins,
   pre-wrap and wrapped replay, exact fallback distribution, all-invalid failure,
   weighted metrics, and actual critic fit loops before/after (20 minibatches).
