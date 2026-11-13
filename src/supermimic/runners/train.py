@@ -55,6 +55,7 @@ from supermimic.learners.policy_learner import build_policy_learner
 from supermimic.storage.replay_buffer import ReplayBuffer
 from supermimic.utils.metrics import CRITIC_FIELDS, EXTRA_FIELDS, POOL_FIELDS, WM_FIELDS, CriticMetrics, RealMetrics, WorldModelMetrics
 from supermimic.motions.pool import MotionPool
+from supermimic.motions.timing import configure_reference_timing
 from supermimic.envs.domain_randomization import LATE_TERMS, DRCfg, curriculum_scale, describe, describe_scale, parse_curriculum, parse_terms
 from supermimic.envs.tracking_env import TrackingSim
 from supermimic.envs.sim_context import make_sim
@@ -83,6 +84,7 @@ if WORLD > 1:
 args.world_size = WORLD
 os.makedirs(args.log_dir, exist_ok=True)
 ck = torch.load(args.resume, map_location=dev) if args.resume else None
+configure_reference_timing(args, ck)
 # checkpoints from before these options existed were trained with the second value
 for k, new, old in (("critic_layer_norm", True, False), ("act_soft_clip", True, False), ("act_norm", "ref", "running"),
                     ("reset_a_prev", "pose", "zero"), ("dynamics", "default", "default"), ("goal_drop", "", ""),
@@ -135,6 +137,9 @@ else:
     motion = MotionLib.from_dir(args.motion_dir, kin, dev, RANK, WORLD, exclude=args.motion_exclude)
 print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frames} frames, "
       f"loaded in {time.time() - t_load:.0f} s", flush=True)
+motion.goal_stride = args.goal_stride
+print(f"[rank {RANK}] future reference offsets: {args.goal_offsets} control frames "
+      f"({args.goal_offsets[0] * CONTROL_DT:g}..{args.goal_offsets[-1] * CONTROL_DT:g} s)", flush=True)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
 K, Hh, HZ = args.goal_frames, args.hist, args.horizon
 GOAL_DIM = goal_frame_dim(GOAL_DROP) * K

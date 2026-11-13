@@ -47,6 +47,7 @@ from supermimic.envs.sim_context import make_sim
 from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import MDP, MAX_STEP_REWARD, OBS_DIM, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
+from supermimic.motions.timing import checkpoint_goal_stride, goal_offsets
 from supermimic.models import Policy
 from supermimic.robots import default_joint_pos_list, set_dynamics
 
@@ -62,6 +63,7 @@ set_dynamics(cfg.get("dynamics", "default"))
 networks.AMP_DTYPE = torch.bfloat16 if cfg.get("amp", "none") == "bf16" else None
 kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion, kin, dev)
+motion.goal_stride = checkpoint_goal_stride(cfg)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(cfg.get("dynamics", "default")))
 K, H = cfg["goal_frames"], cfg["hist"]
 drop = parse_goal_drop(cfg.get("goal_drop", ""))
@@ -81,6 +83,7 @@ try:
         env = TrackingSim(sim_cfg, 1, motion, mdp, eval_mode=True, dr=DRCfg(), randomize=False)
         env.reset_a_prev = cfg.get("reset_a_prev", "zero")
         print(f"[play] {args.ckpt}\n[play] control dt={CONTROL_DT:g}s; nominal training physics; no DR/noise; WM is not used", flush=True)
+        print(f"[play] future offsets={goal_offsets(K, motion.goal_stride)} control frames", flush=True)
         print(f"[play] requested speed={args.speed:g} (0=unpaced), display cap={args.render_hz:g} Hz; actual speed is reported below", flush=True)
         ids = torch.zeros(1, dtype=torch.long, device=dev)
         episode = 0

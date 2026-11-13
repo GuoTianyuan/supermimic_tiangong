@@ -82,6 +82,16 @@ conda activate tg_supermimic
 最后一项包含实验记录中的 `/media/...` 路径和环境配置，使用前按机器核对。
 两种 ONNX 接口用途不同，文件分别保留。
 
+## 未来参考时间窗
+
+`bc_100hz_dev` 新训练默认 `--goal_frames 10 --goal_stride 5`：
+100 Hz 下读取 `t+5, t+10, …, t+50`，覆盖 50～500 ms，输入仍为 10×73 维。
+历史仍是连续 10 帧；控制、replay、WM 仍每步 10 ms。参考越过 clip 尾部时重复该 clip 最后一帧。
+
+实际 stride 和 offsets 写入 args/checkpoint/ONNX。旧 checkpoint 缺少此字段时按 stride=1 播放、导出和续训；
+续训不允许偷偷改变参考槽含义，新时间窗应从零训练。历史 `experiments/` 预设默认保留 stride=1，
+若通过预设启动新实验，须在其 `training` 中明确添加 `"goal_stride": 5`。
+
 ## 验证
 
 ```bash

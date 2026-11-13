@@ -41,6 +41,9 @@ def motion_group(name: str) -> str:
 
 
 class MotionLib:
+    # Standalone/legacy callers keep consecutive frames; training/playback set this from run metadata.
+    goal_stride = 1
+
     def __init__(self, files: list[str], kin: G1Kinematics, device: str, src_fps: float = 30.0,
                  body_storage: str = "cpu"):
         self.device = device
@@ -189,9 +192,9 @@ class MotionLib:
         return MotionLib(files, kin, device)
 
     def future_frames(self, f: torch.Tensor, K: int) -> torch.Tensor:
-        """Frames f+1..f+K clamped to the clip's last frame, shape (B, K)."""
+        """K frames spaced by goal_stride, clamped within this clip, shape (B, K)."""
         end = self.clip_end[self.clip_id[f]]
-        fut = f.unsqueeze(-1) + torch.arange(1, K + 1, device=f.device)
+        fut = f.unsqueeze(-1) + self.goal_stride * torch.arange(1, K + 1, device=f.device)
         return torch.minimum(fut, end.unsqueeze(-1))
 
     def goal(self, f: torch.Tensor, K: int, drop: tuple[str, ...] = ()) -> torch.Tensor:

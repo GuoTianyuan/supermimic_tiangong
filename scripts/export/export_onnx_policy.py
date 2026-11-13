@@ -7,7 +7,7 @@ serves every motion the policy can track:
                                     [q - default_q (29), qd (29), base ang vel in body frame (3),
                                      projected gravity (3), previous action (29),
                                      first two columns of R_robot^T R_ref(f), row-major (6)]
-             goal  (1, K * 73)      MotionLib.goal(f, K): for frames f+1..f+K (clamped to the clip),
+             goal  (1, K * 73)      MotionLib.goal(f, K): at checkpoint goal_offsets (clamped to the clip),
                                     [yaw-frame root offset (3), 6d yaw-frame root rotation (6),
                                      root lin vel in root frame (3), root ang vel in root frame (3),
                                      q (29), 0.1 * qd (29)]
@@ -26,6 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import argparse
+import json
 import os
 import sys
 
@@ -46,7 +47,8 @@ import torch.nn as nn
 import supermimic.models.common as networks
 from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, OBS_DIM
-from supermimic.motions.library import CONTROL_DT, MotionLib
+from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
+from supermimic.motions.timing import checkpoint_goal_stride, goal_offsets
 from supermimic.models import Policy
 from supermimic.robots import JOINT_NAMES, action_scale, default_joint_pos_list
 from supermimic.robots.tiangong3 import motor_params, set_dynamics
@@ -71,7 +73,8 @@ def main():
     set_dynamics(dynamics)
     networks.AMP_DTYPE = None
     K, H = a_["goal_frames"], a_["hist"]
-    goal_dim = 73 * K
+    drop = parse_goal_drop(a_.get("goal_drop", ""))
+    goal_dim = goal_frame_dim(drop) * K
     pi = Policy(OBS_DIM, goal_dim, hist=H, soft_clip_actions=a_.get("act_soft_clip", False))
     pi.load_state_dict(ck["pi"])
     pi.eval()
@@ -93,6 +96,9 @@ def main():
         "history_length": str(H),
         "obs_frame_dim": str(OBS_DIM),
         "future_frames": str(K),
+        "goal_stride": str(checkpoint_goal_stride(a_)),
+        "goal_offsets": json.dumps(goal_offsets(K, checkpoint_goal_stride(a_))),
+        "goal_drop": a_.get("goal_drop", ""),
         "goal_dim": str(goal_dim),
         "joint_names": ",".join(JOINT_NAMES),
         "default_joint_pos": ",".join(f"{v:.6g}" for v in default_joint_pos_list()),
@@ -113,16 +119,17 @@ def main():
         ref = pi(o, gl).clamp(-ACTION_CLIP, ACTION_CLIP).numpy()
     check = os.path.splitext(out)[0] + "_check.npz"
     np.savez(check, obs=o.reshape(8, -1).numpy(), goal=gl.numpy(), actions=ref)
-    print(f"wrote {out}  (obs {H}x{OBS_DIM}, goal {K}x73)")
+    print(f"wrote {out}  (obs {H}x{OBS_DIM}, goal {K}x{goal_frame_dim(drop)})")
     print(f"check data: {check} (compare with onnxruntime)")
 
     if args.motion:
         motion = MotionLib.from_dir(args.motion, G1Kinematics("cpu"), "cpu")
+        motion.goal_stride = checkpoint_goal_stride(a_)
         if len(motion.names) != 1:
             raise ValueError(f"--motion must be one motion file, got {len(motion.names)}")
         f = torch.arange(int(motion.clip_len[0]))
         with torch.no_grad():
-            goals = motion.goal(f, K).numpy()
+            goals = motion.goal(f, K, drop).numpy()
         path = os.path.splitext(out)[0] + "_goals.npz"
         np.savez(path, motion=motion.names[0], goals=goals, ref_q=motion.q[f].numpy(), ref_root_R=motion.root_R[f].numpy())
         print(f"goal table of {motion.names[0]} ({len(f)} frames): {path}")

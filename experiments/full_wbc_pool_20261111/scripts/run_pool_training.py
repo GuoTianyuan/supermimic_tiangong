@@ -33,6 +33,8 @@ def main():
     if not a.resume and any(dest.glob('*.pt')):raise RuntimeError('Existing checkpoint: explicit --resume required')
     if a.resume and not Path(a.resume).is_file():raise FileNotFoundError(a.resume)
     pars=dict(cfg['training'],**cfg['per_rank'])
+    # Historical manifests predate sparse future references. New configs set goal_stride explicitly.
+    pars.setdefault('goal_stride', 1)
     pars.update(motion_active_ratio=cfg['pool']['active_ratio'],motion_replace_ratio=cfg['pool']['replace_ratio'],
                 motion_refresh_iters=cfg['pool']['refresh_iters'],motion_dir=a.motion_dir or cfg['dataset'],
                 motion_stats_cache='/media/supermimic/cache/tg_supermimic/full_wbc_pool_stats',

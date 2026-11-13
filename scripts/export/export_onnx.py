@@ -22,6 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import argparse
+import json
 import os
 import sys
 
@@ -43,6 +44,7 @@ import supermimic.models.common as networks
 from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, OBS_DIM
 from supermimic.motions.library import CONTROL_DT, MotionLib, parse_goal_drop
+from supermimic.motions.timing import checkpoint_goal_stride, goal_offsets
 from supermimic.models import Policy
 from supermimic.robots import JOINT_NAMES, action_scale, default_joint_pos_list
 from supermimic.utils.rotations import mat_to_quat
@@ -73,6 +75,7 @@ def main():
     networks.AMP_DTYPE = None
     kin = G1Kinematics("cpu")
     motion = MotionLib.from_dir(args.motion, kin, "cpu")
+    motion.goal_stride = checkpoint_goal_stride(a_)
     if len(motion.names) != 1:
         raise ValueError(f"--motion must be one motion file, got {len(motion.names)}")
     K, H = a_["goal_frames"], a_["hist"]
@@ -104,6 +107,9 @@ def main():
         "history_length": str(H),
         "obs_frame_dim": str(OBS_DIM),
         "future_frames": str(K),
+        "goal_stride": str(checkpoint_goal_stride(a_)),
+        "goal_offsets": json.dumps(goal_offsets(K, checkpoint_goal_stride(a_))),
+        "goal_drop": a_.get("goal_drop", ""),
         "joint_names": ",".join(JOINT_NAMES),
         "default_joint_pos": ",".join(f"{v:.6g}" for v in default_joint_pos_list()),
         "action_scale": ",".join(f"{action_scale(n):.6g}" for n in JOINT_NAMES),
