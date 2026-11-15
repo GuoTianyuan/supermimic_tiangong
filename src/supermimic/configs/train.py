@@ -15,8 +15,13 @@ def build_parser(add_launcher_args=None):
     parser.add_argument("--horizon", type=int, default=48)
     parser.add_argument("--goal_frames", type=int, default=10)
     parser.add_argument("--goal_stride", type=int, default=None,
-                        help="future reference spacing in control frames (new run: 5, giving 50..500 ms at 100 Hz; "
+                        help="future reference spacing in control frames (new run: 5; "
                         "resume: checkpoint spacing, legacy checkpoints: 1)")
+    parser.add_argument("--goal_start", type=int, default=None,
+                        help="first future slot in control frames (new run: 1; resume: checkpoint start, "
+                        "or one stride for legacy checkpoints); 1/5 gives 10..460 ms at 100 Hz")
+    parser.add_argument("--allow_reference_timing_change", action="store_true",
+                        help="explicitly fine-tune a checkpoint with changed reference offsets, retaining all training states")
     parser.add_argument("--goal_drop", type=str, default=None,
                         help="comma list of reference parts left out of the policy's goal input: root_pos (future pelvis "
                         "displacement), root_rot, root_lin_vel, root_ang_vel, q, qd. Rewards, termination and resets still "

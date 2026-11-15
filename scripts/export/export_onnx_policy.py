@@ -48,7 +48,7 @@ import supermimic.models.common as networks
 from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, OBS_DIM
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
-from supermimic.motions.timing import checkpoint_goal_stride, goal_offsets
+from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride, goal_offsets
 from supermimic.models import Policy
 from supermimic.robots import JOINT_NAMES, action_scale, default_joint_pos_list
 from supermimic.robots.tiangong3 import motor_params, set_dynamics
@@ -97,7 +97,8 @@ def main():
         "obs_frame_dim": str(OBS_DIM),
         "future_frames": str(K),
         "goal_stride": str(checkpoint_goal_stride(a_)),
-        "goal_offsets": json.dumps(goal_offsets(K, checkpoint_goal_stride(a_))),
+        "goal_start": str(checkpoint_goal_start(a_)),
+        "goal_offsets": json.dumps(goal_offsets(K, checkpoint_goal_stride(a_), checkpoint_goal_start(a_))),
         "goal_drop": a_.get("goal_drop", ""),
         "goal_dim": str(goal_dim),
         "joint_names": ",".join(JOINT_NAMES),
@@ -125,6 +126,7 @@ def main():
     if args.motion:
         motion = MotionLib.from_dir(args.motion, G1Kinematics("cpu"), "cpu")
         motion.goal_stride = checkpoint_goal_stride(a_)
+        motion.goal_start = checkpoint_goal_start(a_)
         if len(motion.names) != 1:
             raise ValueError(f"--motion must be one motion file, got {len(motion.names)}")
         f = torch.arange(int(motion.clip_len[0]))

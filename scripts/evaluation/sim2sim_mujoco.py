@@ -34,7 +34,7 @@ from supermimic.envs.domain_randomization import DRCfg
 from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
-from supermimic.motions.timing import checkpoint_goal_stride
+from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
 from supermimic.models import Policy
 from supermimic.robots import DEFAULT_MOTION, JOINT_NAMES, MJCF_PATH, action_scale, default_joint_pos_list
 from supermimic.robots.tiangong3 import get_dynamics, motor_params, set_dynamics
@@ -104,6 +104,7 @@ if args.ckpt:
         raise ValueError("not a tiangong3 checkpoint")
     K, Hh = ck["args"]["goal_frames"], ck["args"]["hist"]
     motion.goal_stride = checkpoint_goal_stride(ck["args"])
+    motion.goal_start = checkpoint_goal_start(ck["args"])
     networks.AMP_DTYPE = torch.bfloat16 if ck["args"].get("amp", "none") == "bf16" and dev.startswith("cuda") else None
     GOAL_DROP = parse_goal_drop(ck["args"].get("goal_drop", ""))
     pi = Policy(OBS_DIM, goal_frame_dim(GOAL_DROP) * K, hist=Hh, soft_clip_actions=ck["args"].get("act_soft_clip", False)).to(dev)

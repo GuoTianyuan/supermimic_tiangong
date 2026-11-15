@@ -43,6 +43,7 @@ def motion_group(name: str) -> str:
 class MotionLib:
     # Standalone/legacy callers keep consecutive frames; training/playback set this from run metadata.
     goal_stride = 1
+    goal_start = None  # Standalone/legacy loaders start one stride ahead unless configured.
 
     def __init__(self, files: list[str], kin: G1Kinematics, device: str, src_fps: float = 30.0,
                  body_storage: str = "cpu"):
@@ -194,7 +195,8 @@ class MotionLib:
     def future_frames(self, f: torch.Tensor, K: int) -> torch.Tensor:
         """K frames spaced by goal_stride, clamped within this clip, shape (B, K)."""
         end = self.clip_end[self.clip_id[f]]
-        fut = f.unsqueeze(-1) + self.goal_stride * torch.arange(1, K + 1, device=f.device)
+        start = self.goal_stride if self.goal_start is None else self.goal_start
+        fut = f.unsqueeze(-1) + start + self.goal_stride * torch.arange(K, device=f.device)
         return torch.minimum(fut, end.unsqueeze(-1))
 
     def goal(self, f: torch.Tensor, K: int, drop: tuple[str, ...] = ()) -> torch.Tensor:

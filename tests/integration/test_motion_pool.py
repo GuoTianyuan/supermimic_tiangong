@@ -32,6 +32,7 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--compile", action="store_true")
     ap.add_argument("--goal-stride", type=int, default=5)
+    ap.add_argument("--goal-start", type=int, default=1)
     ap.add_argument("--output", required=True)
     a = ap.parse_args()
     torch.manual_seed(9)
@@ -59,6 +60,7 @@ def main():
         dense = MotionLib(files, kin, dev, body_storage="gpu")
         full = MotionPool(files, kin, dev, active_ratio=1, stats_cache=str(Path(tmp)/"stats"))
         dense.goal_stride = full.goal_stride = a.goal_stride
+        dense.goal_start = full.goal_start = a.goal_start
         for k in MotionPool.GPU_FIELDS:
             assert torch.equal(getattr(full, k), getattr(dense, k)), k
         all_f = torch.arange(dense.num_frames,device=dev)
@@ -86,6 +88,7 @@ def main():
         pool = MotionPool(files, kin, dev, active_ratio=.25, replace_ratio=.25, seed=10,
                           stats_cache=str(Path(tmp)/"stats"))
         pool.goal_stride = a.goal_stride
+        pool.goal_start = a.goal_start
         vf, mf, nf = pool.reference_joint_stats()
         assert torch.equal(vf, var) and torch.equal(mf, mean) and nf == count
         f = pool.clip_start[:2]+torch.tensor([9, 121], device=dev)

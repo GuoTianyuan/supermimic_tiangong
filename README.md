@@ -84,13 +84,18 @@ conda activate tg_supermimic
 
 ## 未来参考时间窗
 
-`bc_100hz_dev` 新训练默认 `--goal_frames 10 --goal_stride 5`：
-100 Hz 下读取 `t+5, t+10, …, t+50`，覆盖 50～500 ms，输入仍为 10×73 维。
+`bc_100hz_dev` / `bc_100hz_muon` 新训练默认 `--goal_frames 10 --goal_stride 5 --goal_start 1`：
+100 Hz 下读取 `t+1, t+6, …, t+46`，覆盖 10～460 ms，输入仍为 10×73 维。
 历史仍是连续 10 帧；控制、replay、WM 仍每步 10 ms。参考越过 clip 尾部时重复该 clip 最后一帧。
+XYZ 特征仍为未来参考位置减当前参考位置、转到当前参考航向系，不增加真实机器人 XYZ 输入。
 
-实际 stride 和 offsets 写入 args/checkpoint/ONNX。旧 checkpoint 缺少此字段时按 stride=1 播放、导出和续训；
-续训不允许偷偷改变参考槽含义，新时间窗应从零训练。历史 `experiments/` 预设默认保留 stride=1，
-若通过预设启动新实验，须在其 `training` 中明确添加 `"goal_stride": 5`。
+实际 start、stride 和 offsets 写入 args/checkpoint/ONNX，评估与导出按 checkpoint 读取。
+旧 checkpoint 无 start 时保持从一个 stride 开始，无 stride 时保持连续 t+1…t+10。
+普通续训保持旧时间窗；明确改变已有权重的输入语义时，需要指定 `--goal_start 1 --goal_stride 5`
+及 `--allow_reference_timing_change`。这会保留网络、优化器和归一化统计，并在 args/checkpoint 的
+`reference_timing_changes` 记录旧/新时刻及切换迭代；属于续训适应，不是从零训练对照。
+历史实验预设保留原时间窗，新预设须明确填 `goal_start` 和 `goal_stride`。
+池训练启动器的对应开关为 `--allow-reference-timing-change`。
 
 ## 验证
 

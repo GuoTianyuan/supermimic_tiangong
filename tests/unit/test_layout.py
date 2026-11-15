@@ -54,7 +54,11 @@ class Canonical(ast.NodeTransformer):
         if s.startswith(('sys.path.insert(', 'parser.add_argument(', 'add_launcher_args(', 'TB_TAGS.update(')):return None
         return self.generic_visit(node)
     def visit_Assign(self,node):
-        if ast.unparse(node.targets[0]) in {"goal_stride", "motion.goal_stride"}:return None
+        if ast.unparse(node) == "start = self.goal_stride if self.goal_start is None else self.goal_start":
+            return None
+        if ast.unparse(node) == "fut = f.unsqueeze(-1) + start + self.goal_stride * torch.arange(K, device=f.device)":
+            return ast.parse("fut = f.unsqueeze(-1) + torch.arange(1, K + 1, device=f.device)").body[0]
+        if ast.unparse(node.targets[0]) in {"goal_stride", "motion.goal_stride", "goal_start", "motion.goal_start"}:return None
         names={n.id for target in node.targets for n in ast.walk(target) if isinstance(n,ast.Name)}
         if names & {'REPO','DATA_DIR'}:return None
         if self.runner and (names & {'parser','CSV_FIELDS','SMOOTH_KEYS','TB_TAGS'} or ast.unparse(node.targets[0]).startswith('TB_TAGS[')):return None
@@ -92,7 +96,7 @@ def test_training_cli_unchanged(monkeypatch):
     monkeypatch.setenv('SUPERMIMIC_ROBOT','g1')
     from supermimic.configs.train import build_parser
     expected=json.loads(BASELINE.read_text())['cli']
-    assert [x for x in schema(build_parser()) if x["dest"] != "goal_stride"]==expected
+    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer"}]==expected
     p=build_parser()
     a=p.parse_args(['--robot','tiangong3','--num_envs','4096','--wm_prediction','velocity_integrated','--no-act_soft_clip'])
     assert (a.robot,a.num_envs,a.wm_prediction,a.act_soft_clip)==('tiangong3',4096,'velocity_integrated',False)

@@ -19,6 +19,7 @@ def main():
     p.add_argument('--motion-dir')
     p.add_argument('--run')
     p.add_argument('--resume')
+    p.add_argument('--allow-reference-timing-change', action='store_true')
     p.add_argument('--iterations',type=int)
     p.add_argument('--eager',action='store_true')
     a=p.parse_args()
@@ -35,6 +36,7 @@ def main():
     pars=dict(cfg['training'],**cfg['per_rank'])
     # Historical manifests predate sparse future references. New configs set goal_stride explicitly.
     pars.setdefault('goal_stride', 1)
+    pars.setdefault('goal_start', pars['goal_stride'])  # Keep historical presets unchanged.
     pars.update(motion_active_ratio=cfg['pool']['active_ratio'],motion_replace_ratio=cfg['pool']['replace_ratio'],
                 motion_refresh_iters=cfg['pool']['refresh_iters'],motion_dir=a.motion_dir or cfg['dataset'],
                 motion_stats_cache='/media/supermimic/cache/tg_supermimic/full_wbc_pool_stats',
@@ -62,6 +64,7 @@ def main():
     cmd=['bash','sm_native.sh','_train',run,'--gpu',a.gpus,'--robot','tiangong3','--no_tb']
     for k,v in pars.items():cmd += ['--'+k,str(v)]
     cmd+=['--critic_layer_norm','--act_soft_clip']
+    if a.allow_reference_timing_change: cmd += ['--allow_reference_timing_change']
     dest.mkdir(parents=True,exist_ok=True)
     manifest=dict(config=cfg,run=run,gpus=gpus,world_size=len(gpus),actual_args=pars,smoke=a.smoke,eager=a.eager,
                   source_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),

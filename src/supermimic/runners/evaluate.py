@@ -54,7 +54,7 @@ from supermimic.envs.sim_context import make_sim
 from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import MAX_STEP_REWARD, OBS_DIM, MDP, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, motion_group, parse_goal_drop
-from supermimic.motions.timing import checkpoint_goal_stride
+from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
 from supermimic.models import Policy
 from supermimic.robots import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
@@ -105,6 +105,7 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         raise ValueError("Checkpoint robot does not match --robot")
     K, Hh = a_["goal_frames"], a_["hist"]
     motion.goal_stride = checkpoint_goal_stride(a_)
+    motion.goal_start = checkpoint_goal_start(a_)
     networks.AMP_DTYPE = torch.bfloat16 if a_.get("amp", "none") == "bf16" else None
     goal_drop = parse_goal_drop(a_.get("goal_drop", ""))
     pi = Policy(OBS_DIM, goal_frame_dim(goal_drop) * K, hist=Hh, soft_clip_actions=a_.get("act_soft_clip", False)).to(dev)

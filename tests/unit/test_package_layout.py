@@ -18,12 +18,16 @@ class Normalize(ast.NodeTransformer):
         return None
 
     def visit_Assign(self, node):
-        if ast.unparse(node.targets[0]) in {"goal_stride", "motion.goal_stride"}:
+        if ast.unparse(node) == "start = self.goal_stride if self.goal_start is None else self.goal_start":
+            return None
+        if ast.unparse(node) == "fut = f.unsqueeze(-1) + start + self.goal_stride * torch.arange(K, device=f.device)":
+            return ast.parse("fut = f.unsqueeze(-1) + torch.arange(1, K + 1, device=f.device)").body[0]
+        if ast.unparse(node.targets[0]) in {"goal_stride", "motion.goal_stride", "goal_start", "motion.goal_start"}:
             return None
         return self.generic_visit(node)
 
     def visit_Expr(self, node):
-        if ast.unparse(node.value).startswith("parser.add_argument('--goal_stride'"):
+        if ast.unparse(node.value).startswith(("parser.add_argument('--goal_stride'", "parser.add_argument('--goal_start'", "parser.add_argument('--allow_reference_timing_change'")):
             return None  # The new option is tested independently.
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             return None

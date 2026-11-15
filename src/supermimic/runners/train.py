@@ -138,6 +138,7 @@ else:
 print(f"[rank {RANK}] motion shard: {len(motion.names)} clips, {motion.num_frames} frames, "
       f"loaded in {time.time() - t_load:.0f} s", flush=True)
 motion.goal_stride = args.goal_stride
+motion.goal_start = args.goal_start
 print(f"[rank {RANK}] future reference offsets: {args.goal_offsets} control frames "
       f"({args.goal_offsets[0] * CONTROL_DT:g}..{args.goal_offsets[-1] * CONTROL_DT:g} s)", flush=True)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
