@@ -53,7 +53,16 @@ class Canonical(ast.NodeTransformer):
         s=ast.unparse(node.value)
         if s.startswith(('sys.path.insert(', 'parser.add_argument(', 'add_launcher_args(', 'TB_TAGS.update(')):return None
         return self.generic_visit(node)
+    def visit_Dict(self, node):
+        # New height diagnostics are checked numerically in test_relative_height_reward.
+        pairs = [(k, v) for k, v in zip(node.keys, node.values) if not (
+            isinstance(k, ast.Constant) and k.value in {"error_body_pos_ref_z_m", "error_body_z_relative_m"})]
+        node.keys, node.values = [p[0] for p in pairs], [p[1] for p in pairs]
+        return self.generic_visit(node)
+
     def visit_Assign(self,node):
+        if ast.unparse(node) == "mdp.cfg = checkpoint_reward_cfg(a_)":
+            return None  # Checkpoint reward restoration is independently covered.
         if ast.unparse(node) == "start = self.goal_stride if self.goal_start is None else self.goal_start":
             return None
         if ast.unparse(node) == "fut = f.unsqueeze(-1) + start + self.goal_stride * torch.arange(K, device=f.device)":
@@ -96,7 +105,7 @@ def test_training_cli_unchanged(monkeypatch):
     monkeypatch.setenv('SUPERMIMIC_ROBOT','g1')
     from supermimic.configs.train import build_parser
     expected=json.loads(BASELINE.read_text())['cli']
-    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer"}]==expected
+    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer", "root_pos_z_weight", "body_pos_z_mode"}]==expected
     p=build_parser()
     a=p.parse_args(['--robot','tiangong3','--num_envs','4096','--wm_prediction','velocity_integrated','--no-act_soft_clip'])
     assert (a.robot,a.num_envs,a.wm_prediction,a.act_soft_clip)==('tiangong3',4096,'velocity_integrated',False)

@@ -18,6 +18,8 @@ class Normalize(ast.NodeTransformer):
         return None
 
     def visit_Assign(self, node):
+        if ast.unparse(node) == "mdp.cfg = checkpoint_reward_cfg(a_)":
+            return None  # Reward checkpoint semantics have dedicated numerical tests.
         if ast.unparse(node) == "start = self.goal_stride if self.goal_start is None else self.goal_start":
             return None
         if ast.unparse(node) == "fut = f.unsqueeze(-1) + start + self.goal_stride * torch.arange(K, device=f.device)":
@@ -27,7 +29,7 @@ class Normalize(ast.NodeTransformer):
         return self.generic_visit(node)
 
     def visit_Expr(self, node):
-        if ast.unparse(node.value).startswith(("parser.add_argument('--goal_stride'", "parser.add_argument('--goal_start'", "parser.add_argument('--allow_reference_timing_change'")):
+        if ast.unparse(node.value).startswith(("parser.add_argument('--goal_stride'", "parser.add_argument('--goal_start'", "parser.add_argument('--allow_reference_timing_change'", "parser.add_argument('--root_pos_z_weight'", "parser.add_argument('--body_pos_z_mode'")):
             return None  # The new option is tested independently.
         if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str):
             return None
@@ -81,8 +83,10 @@ def test_split_numerical_functions_preserved():
     current["sync_grads"] = [sync]
     checked = 0
     for name, entries in BEFORE["functions"].items():
-        if name == "repository_root":
-            continue  # Path depth changed; separate asset-root tests cover this.
+        if name in {"repository_root", "reward"}:
+            # Reward is intentionally extended by the height ablation; numerical invariants,
+            # legacy defaults, gradients and saved semantics have dedicated tests.
+            continue
         actual = {canonical(node) for node in current.get(name, [])}
         for entry in entries:
             expected = canonical(ast.parse(entry["code"]).body[0])
@@ -105,7 +109,7 @@ def test_runner_schedule_and_checkpoint_flow_preserved():
     class Runner(Normalize):
         def visit_Expr(self, node):
             call = ast.unparse(node.value)
-            if call.startswith("configure_reference_timing(") or "future reference offsets:" in call:
+            if call.startswith("configure_reference_timing(") or "future reference offsets:" in call or "reward config:" in call:
                 return None  # CLI/metadata only; independent reference-timing tests cover this.
             return super().visit_Expr(node)
 
@@ -113,9 +117,16 @@ def test_runner_schedule_and_checkpoint_flow_preserved():
             return None if node.name in moved else self.generic_visit(node)
 
         def visit_Assign(self, node):
+            if ast.unparse(node) == "task_reward_cfg = configure_reward(args, ck)":
+                return ast.parse("args.reward_cfg = vars(reward_cfg(args.dynamics))").body[0]
             if any(isinstance(t, ast.Name) and t.id in moved_assignments for t in node.targets):
                 return None
             return super().visit_Assign(node)
+
+        def visit_Name(self, node):
+            if node.id == "task_reward_cfg" and isinstance(node.ctx, ast.Load):
+                return ast.parse("reward_cfg(args.dynamics)", mode="eval").body
+            return node
 
         def visit_Call(self, node):
             mapping = {

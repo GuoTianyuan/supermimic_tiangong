@@ -35,6 +35,10 @@ def build_parser(add_launcher_args=None):
     parser.add_argument("--wm_batch", type=int, default=2048)
     parser.add_argument("--pi_batch", type=int, default=4096)
     parser.add_argument("--lr", type=float, default=2e-4)
+    parser.add_argument("--root_pos_z_weight", type=float, default=None,
+                        help="squared root-Z error coefficient (new run: 1; resume: checkpoint value)")
+    parser.add_argument("--body_pos_z_mode", choices=["reference", "relative_root"], default=None,
+                        help="link-position target Z: reference absolute height or root-relative height; resume keeps its value")
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--lam", type=float, default=0.95)
     parser.add_argument("--action_noise", type=float, default=0.1)

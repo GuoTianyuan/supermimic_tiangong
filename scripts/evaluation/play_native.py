@@ -48,6 +48,7 @@ from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import MDP, MAX_STEP_REWARD, OBS_DIM, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride, goal_offsets
+from supermimic.tasks.tracking.config import checkpoint_reward_cfg
 from supermimic.models import Policy
 from supermimic.robots import default_joint_pos_list, set_dynamics
 
@@ -65,7 +66,7 @@ kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion, kin, dev)
 motion.goal_stride = checkpoint_goal_stride(cfg)
 motion.goal_start = checkpoint_goal_start(cfg)
-mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(cfg.get("dynamics", "default")))
+mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), checkpoint_reward_cfg(cfg))
 K, H = cfg["goal_frames"], cfg["hist"]
 drop = parse_goal_drop(cfg.get("goal_drop", ""))
 pi = Policy(OBS_DIM, goal_frame_dim(drop) * K, hist=H, soft_clip_actions=cfg.get("act_soft_clip", False)).to(dev)

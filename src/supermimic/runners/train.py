@@ -60,6 +60,7 @@ from supermimic.envs.domain_randomization import LATE_TERMS, DRCfg, curriculum_s
 from supermimic.envs.tracking_env import TrackingSim
 from supermimic.envs.sim_context import make_sim
 from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.config import configure_reward
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD, MDP, OBS_A_PREV, OBS_DIM, XI_DIM, normalize_xi, reward_cfg, unflatten_state
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 import supermimic.models.common as networks
@@ -103,7 +104,8 @@ if ck is not None and ck["args"].get("dynamics", "default") != args.dynamics:
           f"continuing with --dynamics {args.dynamics} (the world model has to re-adapt).", flush=True)
 set_dynamics(args.dynamics)
 dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
-args.reward_cfg = vars(reward_cfg(args.dynamics))
+task_reward_cfg = configure_reward(args, ck)
+print(f"[rank {RANK}] reward config: {args.reward_cfg}", flush=True)
 args.simulation_timing = dict(control_dt=CONTROL_DT, physics_dt=CONTROL_DT/4, physics_substeps=4)
 if ck is not None and args.wm_prediction == "velocity_integrated":
     if ck["args"].get("simulation_timing") != args.simulation_timing:
@@ -141,7 +143,7 @@ motion.goal_stride = args.goal_stride
 motion.goal_start = args.goal_start
 print(f"[rank {RANK}] future reference offsets: {args.goal_offsets} control frames "
       f"({args.goal_offsets[0] * CONTROL_DT:g}..{args.goal_offsets[-1] * CONTROL_DT:g} s)", flush=True)
-mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
+mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), task_reward_cfg)
 K, Hh, HZ = args.goal_frames, args.hist, args.horizon
 GOAL_DIM = goal_frame_dim(GOAL_DROP) * K
 CRITIC_IN = INV_DIM + CRITIC_EXTRA + dr.xi_dim + GOAL_DIM
