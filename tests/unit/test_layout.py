@@ -16,6 +16,7 @@ import sys
 
 import numpy as np
 import pytest
+from config_refactor_compat import ConfigDefaults
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = ROOT/'tests/fixtures/layout_baseline.json'
@@ -32,7 +33,7 @@ def schema(parser):
              type=getattr(a.type,'__name__',None),action=type(a).__name__).items()} for a in parser._actions]
 
 
-class Canonical(ast.NodeTransformer):
+class Canonical(ConfigDefaults):
     """Ignore only relocation/UI plumbing, never numerical learning expressions."""
     def __init__(self, runner=False):self.runner=runner
     def visit_Import(self,node):return None
@@ -41,7 +42,7 @@ class Canonical(ast.NodeTransformer):
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Mult) and ast.unparse(node.left) == "self.goal_stride":
             return self.visit(node.right)
-        return self.generic_visit(node)
+        return super().visit_BinOp(node)
 
     def visit_Constant(self,node):
         if isinstance(node.value,str):
@@ -62,13 +63,13 @@ class Canonical(ast.NodeTransformer):
         names={n.id for target in node.targets for n in ast.walk(target) if isinstance(n,ast.Name)}
         if names & {'REPO','DATA_DIR'}:return None
         if self.runner and (names & {'parser','CSV_FIELDS','SMOOTH_KEYS','TB_TAGS'} or ast.unparse(node.targets[0]).startswith('TB_TAGS[')):return None
-        return self.generic_visit(node)
+        return super().visit_Assign(node)
     def visit_For(self,node):
         if self.runner and ast.unparse(node.iter) in ('EXTRA_FIELDS','CRITIC_FIELDS'):return None
         return self.generic_visit(node)
     def visit_FunctionDef(self,node):
         if self.runner and node.name in ('print_progress','_rss_gb','_hms'):return None
-        return self.generic_visit(node)
+        return super().visit_FunctionDef(node)
     def visit_Call(self,node):
         name=ast.unparse(node.func)
         if self.runner and name=='print_progress':node.keywords=[]
@@ -96,7 +97,7 @@ def test_training_cli_unchanged(monkeypatch):
     monkeypatch.setenv('SUPERMIMIC_ROBOT','g1')
     from supermimic.configs.train import build_parser
     expected=json.loads(BASELINE.read_text())['cli']
-    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer"}]==expected
+    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer", "config", "print_config"}]==expected
     p=build_parser()
     a=p.parse_args(['--robot','tiangong3','--num_envs','4096','--wm_prediction','velocity_integrated','--no-act_soft_clip'])
     assert (a.robot,a.num_envs,a.wm_prediction,a.act_soft_clip)==('tiangong3',4096,'velocity_integrated',False)

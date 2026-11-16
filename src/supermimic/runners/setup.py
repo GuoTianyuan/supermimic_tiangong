@@ -15,11 +15,12 @@ import copy
 import torch
 import torch.distributed as dist
 
+from supermimic.configs.experiment import resolve_reward_config, config_snapshot
 from supermimic.motions.pool import MotionPool
 from supermimic.motions.timing import configure_reference_timing
 from supermimic.envs.domain_randomization import DRCfg, parse_curriculum, parse_terms
 from supermimic.robots.kinematics import G1Kinematics
-from supermimic.tasks.tracking.mdp import CRITIC_EXTRA, INV_DIM, MAX_STEP_REWARD, MDP, OBS_A_PREV, OBS_DIM, XI_DIM, reward_cfg
+from supermimic.tasks.tracking.mdp import CRITIC_EXTRA, INV_DIM, MDP, OBS_A_PREV, OBS_DIM, XI_DIM
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 import supermimic.models.common as networks
 from supermimic.models import Critic, Policy, WorldModel
@@ -62,7 +63,6 @@ def build_training(args, rank=0, world=1):
         raise ValueError("--dr_curriculum needs --dr terms")
     if args.dr_ramp < 0:
         raise ValueError("--dr_ramp must be >= 0")
-    G_MAX = MAX_STEP_REWARD / (1 - args.gamma)
 
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
@@ -94,7 +94,9 @@ def build_training(args, rank=0, world=1):
               f"continuing with --dynamics {args.dynamics} (the world model has to re-adapt).", flush=True)
     set_dynamics(args.dynamics)
     dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
-    args.reward_cfg = vars(reward_cfg(args.dynamics))
+    task_reward_cfg = resolve_reward_config(args, ck)
+    args.max_step_reward = task_reward_cfg.max_step_reward(CONTROL_DT)
+    G_MAX = args.max_step_reward / (1 - args.gamma)
     args.simulation_timing = dict(control_dt=CONTROL_DT, physics_dt=CONTROL_DT/4, physics_substeps=4)
     if ck is not None and args.wm_prediction == "velocity_integrated":
         if ck["args"].get("simulation_timing") != args.simulation_timing:
@@ -104,7 +106,9 @@ def build_training(args, rank=0, world=1):
         print(f"[rank {RANK}] Self-collision setting changed from {ck['args'].get('self_collisions', False)} "
               f"to {args.self_collisions}; replay is rebuilt from the new simulator and the world model has to re-adapt.",
               flush=True)
+    args.training_config = config_snapshot(args)
     if MAIN:
+        json.dump(args.training_config, open(os.path.join(args.log_dir, "config.json"), "w"), indent=2)
         json.dump(vars(args), open(os.path.join(args.log_dir, "args.json"), "w"), indent=2)
 
     kin = G1Kinematics(dev)
@@ -132,7 +136,7 @@ def build_training(args, rank=0, world=1):
     motion.goal_start = args.goal_start
     print(f"[rank {RANK}] future reference offsets: {args.goal_offsets} control frames "
           f"({args.goal_offsets[0] * CONTROL_DT:g}..{args.goal_offsets[-1] * CONTROL_DT:g} s)", flush=True)
-    mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(args.dynamics))
+    mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), task_reward_cfg)
     K, Hh, HZ = args.goal_frames, args.hist, args.horizon
     GOAL_DIM = goal_frame_dim(GOAL_DROP) * K
     CRITIC_IN = INV_DIM + CRITIC_EXTRA + dr.xi_dim + GOAL_DIM

@@ -58,7 +58,7 @@ def main():
     env=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=='TrackingSim')
     step=next(n for n in env.body if isinstance(n,ast.FunctionDef) and n.name=='step')
     block=next(n for n in step.body if isinstance(n,ast.If) and ast.unparse(n.test)=='len(ids) > 0')
-    obj=types.SimpleNamespace(ep_step=torch.ones(2),gamma=.995,ep_ret=torch.tensor([1.,3.]),
+    obj=types.SimpleNamespace(mdp=types.SimpleNamespace(max_step_reward=.05),ep_step=torch.ones(2),gamma=.995,ep_ret=torch.tensor([1.,3.]),
                              ep_disc_ret=torch.tensor([1.,3.]),start_bin=torch.zeros(2,dtype=torch.long),
                              bin_G=torch.zeros(1),reset=lambda ids:None)
     out={}

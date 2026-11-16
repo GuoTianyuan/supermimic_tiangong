@@ -1,9 +1,17 @@
 """Import-safe training entry point: CLI -> dependencies -> simulator -> runner."""
 import os
+import json
+import sys
+from supermimic.configs.experiment import config_snapshot
 from supermimic.configs.train import build_parser
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if "--print-config" in argv:
+        args = build_parser().parse_args(argv)
+        print(json.dumps(config_snapshot(args), indent=2, ensure_ascii=False))
+        return
     from isaaclab.app import add_launcher_args, launch_simulation
     args = build_parser(add_launcher_args).parse_args(argv)
     os.environ["SUPERMIMIC_ROBOT"] = args.robot

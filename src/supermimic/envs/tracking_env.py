@@ -18,7 +18,7 @@ from isaaclab.sim import SimulationContext
 from isaaclab.utils import instantiate, replace
 
 from supermimic.envs.domain_randomization import ARMATURE, CONTACT, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, to_unit, uniform
-from supermimic.tasks.tracking.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, flatten_state
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, MDP, flatten_state
 from supermimic.motions.library import BIN_FRAMES, CONTROL_DT, MotionLib
 from supermimic.robots import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
 from supermimic.utils.rotations import mat_to_quat, quat_to_mat, so3_exp
@@ -108,7 +108,7 @@ class TrackingSim:
         self.start_bin = torch.zeros(self.N, dtype=torch.long, device=dev)
         self.ep_disc_ret = torch.zeros(self.N, device=dev)
         self.ep_ret = torch.zeros(self.N, device=dev)
-        self.G_max = MAX_STEP_REWARD / (1 - gamma)
+        self.G_max = mdp.max_step_reward / (1 - gamma)
         if hasattr(motion, "bin_returns"):
             # Restore before the constructor's first reset, so it uses the saved sampler too.
             self.bin_G = motion.bin_returns[motion.bin_global.cpu()].to(dev)
@@ -416,6 +416,6 @@ class TrackingSim:
             b = self.start_bin[ids]
             update_bin_returns_(self.bin_G, b, G)
             out["ep_len"] = T
-            out["ep_ret_norm"] = self.ep_ret[ids] / (T * MAX_STEP_REWARD)
+            out["ep_ret_norm"] = self.ep_ret[ids] / (T * self.mdp.max_step_reward)
             self.reset(ids)
         return out

@@ -2,6 +2,7 @@
 import ast
 import copy
 import json
+from config_refactor_compat import ConfigDefaults
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -10,7 +11,7 @@ BEFORE = json.loads((ROOT / "tests/fixtures/package_layout_before.json").read_te
 MOVES = json.loads((ROOT / "docs/refactor/package_map.json").read_text())["files"]
 
 
-class Normalize(ast.NodeTransformer):
+class Normalize(ConfigDefaults):
     def visit_Import(self, node):
         return None
 
@@ -24,7 +25,7 @@ class Normalize(ast.NodeTransformer):
             return ast.parse("fut = f.unsqueeze(-1) + torch.arange(1, K + 1, device=f.device)").body[0]
         if ast.unparse(node.targets[0]) in {"goal_stride", "motion.goal_stride", "goal_start", "motion.goal_start"}:
             return None
-        return self.generic_visit(node)
+        return super().visit_Assign(node)
 
     def visit_Expr(self, node):
         if ast.unparse(node.value).startswith(("parser.add_argument('--goal_stride'", "parser.add_argument('--goal_start'", "parser.add_argument('--allow_reference_timing_change'")):
@@ -37,7 +38,7 @@ class Normalize(ast.NodeTransformer):
     def visit_BinOp(self, node):
         if isinstance(node.op, ast.Mult) and ast.unparse(node.left) == "self.goal_stride":
             return self.visit(node.right)
-        return self.generic_visit(node)
+        return super().visit_BinOp(node)
 
     def visit_Constant(self, node):
         if isinstance(node.value, str):
@@ -81,8 +82,8 @@ def test_split_numerical_functions_preserved():
     current["sync_grads"] = [sync]
     checked = 0
     for name, entries in BEFORE["functions"].items():
-        if name in {"repository_root", "train", "_request_stop", "stop_requested", "lr_at", "collect", "save_checkpoint"}:
-            continue  # Paths have separate checks; moved orchestration has test_training_runner.py.
+        if name in {"repository_root", "train", "_request_stop", "stop_requested", "lr_at", "collect", "save_checkpoint", "reward_cfg", "build_parser"}:
+            continue  # CLI/config defaults: test_layout/test_tracking_configs; runner: test_training_runner.
         actual = {canonical(node) for node in current.get(name, [])}
         for entry in entries:
             expected = canonical(ast.parse(entry["code"]).body[0])

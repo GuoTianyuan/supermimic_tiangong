@@ -96,7 +96,7 @@ class TrainingLogger:
             with (directory / "train_log.csv").open() as stream:
                 for row in csv.DictReader(stream):
                     step = int(row["iteration"])
-                    for tag, value in dashboard_scalars(row, control_dt, args.wm_window).items():
+                    for tag, value in dashboard_scalars(row, control_dt, args.wm_window, getattr(args, "max_step_reward", 5.0 * control_dt) / control_dt).items():
                         self.tb.add_scalar(tag, value, step)
         self.tags = build_tb_tags(args.wm_window)
         (directory / "logging_schema.json").write_text(json.dumps({
@@ -119,7 +119,7 @@ class TrainingLogger:
         row["host_rss_gib"] = _rss_gb()
         self.tb.add_scalar("Perf/gpu_reserved_gib_rank0", row["gpu_reserved_gib"], step)
         self.tb.add_scalar("Perf/host_rss_gib_rank0", row["host_rss_gib"], step)
-        for tag, value in dashboard_scalars(row, self.dt, self.args.wm_window).items():
+        for tag, value in dashboard_scalars(row, self.dt, self.args.wm_window, getattr(self.args, "max_step_reward", 5.0 * self.dt) / self.dt).items():
             self.tb.add_scalar(tag, value, step)
         for key, tag in self.tags.items():
             if key in row and math.isfinite(float(row[key])):

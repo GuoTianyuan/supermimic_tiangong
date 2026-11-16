@@ -1,0 +1,37 @@
+2026-11-16：bc_100hz_dev 配置整理（基点 d5de8a5）
+
+配置入口
+  tasks/tracking/tracking_env_cfg.py：Scene / Commands / Observations / Actions /
+    Events / Rewards / Terminations；纯 Python dataclass，阅读不需要导入 Isaac Lab。
+  tasks/tracking/agents/supermimic_cfg.py：Runner / WorldModel / Actor / Critic /
+    Replay / Optimizer。
+  tasks/tracking/configs/tiangong3.py：full_wbc() 具体任务配置。
+  configs/train.py：旧 CLI 名称、类型和帮助信息兼容层，默认值来自配置类。
+  configs/experiment.py：预设选择、扁平兼容参数、奖励恢复和实际配置序列化。
+  tasks/tracking/config.py：旧 RewardCfg 格式及 checkpoint 兼容层。
+
+参考本地官方 SuperMimic 的嵌套 Runner/WM/Policy 配置，以及 BeyondMimic 的
+tracking_env_cfg / agents 分组。仍用 SuperMimic 可微想象算法；没有替换成 PPO、
+Isaac RewardManager，也没有通过此整理改变模拟器。
+
+行为
+  旧 CLI 的默认值保持；显式 --config tiangong3_full_wbc 选择 full WBC 预设。
+  CLI 显式参数优先于预设；None 字段继续沿用原 checkpoint/fresh-run 解析规则。
+  --print-config 不初始化 Torch/Isaac Lab；输出是请求配置，非已恢复 checkpoint。
+  setup 完成参数解析后保存 config.json，同时保留 args.json 和 checkpoint.args。
+  原硬编码正 tracking 权重改为配置引用，默认数值、奖励函数和梯度保持。
+  最大正奖励由权重和 dt 推导，真实采样、想象日志、critic/采样价值上限同步使用。
+  评测、播放和续训恢复 checkpoint 中保存的奖励/终止阈值；旧字段兼容。
+  显式预设和 checkpoint 目标冲突时报错；default 续训保留 checkpoint 的目标。
+  脚底点位实验仍独立保存在 bc_100hz_feet，没有合入此基线。
+
+验证
+  本地 conda tg_supermimic，CPU，pytest tests/unit：76 passed。
+  默认/default 和 dexevt 奖励：与整理前代码逐项相等（rtol=0, atol=0）；
+  对状态/action 的梯度逐项相等；实际 Torch FK + MuJoCo 资产。
+  自定义正权重真实生效，最大回报和日志同步；torch.compile aot_eager fullgraph
+  前向及反向一致；旧 CLI schema、参考时间窗、checkpoint/配置继承通过。
+  原有模型/learner 数学、随机采样顺序、学习调度 AST 回归仍检查；仅配置引用做
+  有限归一化，并由新增数值测试覆盖。
+  没有可用 CUDA/NVML，未做 GPU 仿真、多卡训练或新策略效果验证。
+  本次未启动或恢复服务器训练，未修改部署仓库。

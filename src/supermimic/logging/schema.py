@@ -11,7 +11,7 @@ EPISODE_FIELDS = [*("episode_" + key for key in REWARD_NAMES),
                   "episode_return", "episode_length_seconds", "episode_count"]
 
 
-def dashboard_scalars(row, control_dt, wm_window):
+def dashboard_scalars(row, control_dt, wm_window, max_reward_rate=5.0):
     """Reward/* = signed weighted contribution per second (reward has dt already).
 
     Episode_Reward/* = mean completed-episode sum / maximum episode seconds,
@@ -27,9 +27,9 @@ def dashboard_scalars(row, control_dt, wm_window):
     for key, name in REWARD_NAMES.items():
         add("Reward/" + name, key, 1 / control_dt)
         add("Episode_Reward/" + name, "episode_" + key)
-    # The maximum positive tracking rate is 4*1 + 2*.5 = 5 / second.
-    add("Reward/total", "sim_reward_normalized", 5.)
-    add("Reward/tracking", "track_fraction", 5.)
+    # Old runs have a maximum positive tracking rate of 5 per second.
+    add("Reward/total", "sim_reward_normalized", max_reward_rate)
+    add("Reward/tracking", "track_fraction", max_reward_rate)
     for tag, key in {
         "Train/reward_normalized": "sim_reward_normalized",
         "Train/tracking_fraction": "track_fraction",

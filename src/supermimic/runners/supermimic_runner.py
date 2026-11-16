@@ -60,7 +60,7 @@ class SuperMimicRunner:
         PROFILE = bool(int(os.environ.get("SM_PROFILE", "0")))
         dr_scale = curriculum_scale(dr.terms, dr_curriculum, args.dr_ramp, start_it)
         buffer = ReplayBuffer(args.buffer_steps, args.num_envs, dev, xi_dim=dr.xi_dim)
-        real_metrics = RealMetrics(dev)
+        real_metrics = RealMetrics(dev, mdp.max_step_reward)
         critic_metrics = CriticMetrics(dev)
         wm_metrics = WorldModelMetrics(dev, G1_JOINT_NAMES)
         episode_metrics = EpisodeMetrics(args.num_envs, env.max_episode_steps * CONTROL_DT, dev)

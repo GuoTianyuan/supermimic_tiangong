@@ -24,7 +24,8 @@ EXTRA_FIELDS = ("wm_nse1", "success_frac", "episodes_ended", "episodes_failed", 
 
 
 class RealMetrics:
-    def __init__(self, device):
+    def __init__(self, device, max_step_reward=MAX_STEP_REWARD):
+        self.max_step_reward = max_step_reward
         self.keys = (*REWARD_KEYS, *ERRORS.values(), "action_rate", "joint_acc", "track", "net")
         self.sums = torch.zeros(len(self.keys)+1, dtype=torch.float64, device=device)
 
@@ -45,8 +46,8 @@ class RealMetrics:
                 **{k: max(d[v], 0)**.5 for k, v in ERRORS.items()},
                 "action_delta_rms": max(d["action_rate"]/29, 0)**.5,
                 "joint_acc_rms": max(d["joint_acc"]/29, 0)**.5,
-                "track_fraction": d["track"]/MAX_STEP_REWARD,
-                "sim_reward_normalized": d["net"]/MAX_STEP_REWARD}
+                "track_fraction": d["track"]/self.max_step_reward,
+                "sim_reward_normalized": d["net"]/self.max_step_reward}
 
 
 class CriticMetrics:

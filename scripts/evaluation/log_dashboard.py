@@ -33,7 +33,7 @@ def main():
                 if not row.get("iteration", "").isdigit():
                     continue
                 step = int(row["iteration"])
-                for tag, value in dashboard_scalars(row, dt, cfg["wm_window"]).items():
+                for tag, value in dashboard_scalars(row, dt, cfg["wm_window"], cfg.get("max_step_reward", 5.0 * dt) / dt).items():
                     writer.add_scalar(tag, value, step)
                 count += 1
                 final_step = step

@@ -27,12 +27,12 @@ def reward(self, S, f, a, a_prev, terms: bool = False, qd_prev=None, ref_bodies=
     e_rp = ((rp - p) ** 2).sum(-1)
     e_ro = rot_angle_sq(rR, R)
     r_track = (
-        torch.exp(-e_pos / c.body_pos_std**2)
-        + torch.exp(-e_ori / c.body_ori_std**2)
-        + torch.exp(-e_lv / c.body_linvel_std**2)
-        + torch.exp(-e_av / c.body_angvel_std**2)
-        + 0.5 * torch.exp(-e_rp / c.root_pos_std**2)
-        + 0.5 * torch.exp(-e_ro / c.root_ori_std**2)
+        c.w_body_pos * torch.exp(-e_pos / c.body_pos_std**2)
+        + c.w_body_ori * torch.exp(-e_ori / c.body_ori_std**2)
+        + c.w_body_linvel * torch.exp(-e_lv / c.body_linvel_std**2)
+        + c.w_body_angvel * torch.exp(-e_av / c.body_angvel_std**2)
+        + c.w_root_pos * torch.exp(-e_rp / c.root_pos_std**2)
+        + c.w_root_ori * torch.exp(-e_ro / c.root_ori_std**2)
     )
     r_rate = ((a - a_prev) ** 2).sum(-1)
     r_lim = (torch.relu(q - self.soft_hi) + torch.relu(self.soft_lo - q)).sum(-1)
@@ -56,12 +56,12 @@ def reward(self, S, f, a, a_prev, terms: bool = False, qd_prev=None, ref_bodies=
             "e_body_angvel": e_av,
             "e_joint_pos": (m.q[f] - q).square().mean(-1),
             "e_joint_vel": (m.qd[f] - qd).square().mean(-1),
-            "reward_body_pos": torch.exp(-e_pos / c.body_pos_std**2) * CONTROL_DT,
-            "reward_body_ori": torch.exp(-e_ori / c.body_ori_std**2) * CONTROL_DT,
-            "reward_body_linvel": torch.exp(-e_lv / c.body_linvel_std**2) * CONTROL_DT,
-            "reward_body_angvel": torch.exp(-e_av / c.body_angvel_std**2) * CONTROL_DT,
-            "reward_root_pos": 0.5 * torch.exp(-e_rp / c.root_pos_std**2) * CONTROL_DT,
-            "reward_root_ori": 0.5 * torch.exp(-e_ro / c.root_ori_std**2) * CONTROL_DT,
+            "reward_body_pos": c.w_body_pos * torch.exp(-e_pos / c.body_pos_std**2) * CONTROL_DT,
+            "reward_body_ori": c.w_body_ori * torch.exp(-e_ori / c.body_ori_std**2) * CONTROL_DT,
+            "reward_body_linvel": c.w_body_linvel * torch.exp(-e_lv / c.body_linvel_std**2) * CONTROL_DT,
+            "reward_body_angvel": c.w_body_angvel * torch.exp(-e_av / c.body_angvel_std**2) * CONTROL_DT,
+            "reward_root_pos": c.w_root_pos * torch.exp(-e_rp / c.root_pos_std**2) * CONTROL_DT,
+            "reward_root_ori": c.w_root_ori * torch.exp(-e_ro / c.root_ori_std**2) * CONTROL_DT,
             "pen_action_rate": c.w_action_rate * r_rate * CONTROL_DT,
             "pen_joint_acc": c.w_joint_acc * (r_acc if r_acc is not None else torch.zeros_like(r_rate)) * CONTROL_DT,
             "pen_joint_limit": c.w_joint_limit * r_lim * CONTROL_DT,

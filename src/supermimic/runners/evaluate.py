@@ -52,7 +52,7 @@ from supermimic.envs.domain_randomization import DRCfg, describe, parse_terms
 from supermimic.envs.tracking_env import TrackingSim
 from supermimic.envs.sim_context import make_sim
 from supermimic.robots.kinematics import G1Kinematics
-from supermimic.tasks.tracking.mdp import MAX_STEP_REWARD, OBS_DIM, MDP, reward_cfg
+from supermimic.tasks.tracking.mdp import OBS_DIM, MDP, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, motion_group, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
 from supermimic.models import Policy
@@ -101,6 +101,10 @@ def group_table(res: dict, top: int = 25) -> str:
 @torch.no_grad()
 def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
     a_ = ck["args"]
+    mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev),
+              reward_cfg(DYNAMICS, a_.get("reward_cfg")))
+    env.mdp = mdp
+    env.G_max = mdp.max_step_reward / (1 - env.gamma)
     if a_.get("robot", "g1") != args.robot:
         raise ValueError("Checkpoint robot does not match --robot")
     K, Hh = a_["goal_frames"], a_["hist"]
@@ -138,11 +142,11 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
         out = env.step(a)
         ret += torch.where(alive, out["r"], 0.0)
         env.f = torch.minimum(env.f, clip_end - 1)  # finished clips keep stepping; keep f+1 in range
-    norm = (ret / ((motion.clip_len.repeat(R) - 1).float() * MAX_STEP_REWARD)).view(R, C)
+    norm = (ret / ((motion.clip_len.repeat(R) - 1).float() * mdp.max_step_reward)).view(R, C)
     n_fail = env.failed_eval.view(R, C).sum(0)
     res = {
         "norm_return": norm.mean().item(),
-        "norm_return_framew": (ret.sum() / (R * (motion.clip_len - 1).sum() * MAX_STEP_REWARD)).item(),
+        "norm_return_framew": (ret.sum() / (R * (motion.clip_len - 1).sum() * mdp.max_step_reward)).item(),
         "n_failed": int(n_fail.sum().item()),
         "failed": [motion.names[i] + (f" x{int(n_fail[i])}" if R > 1 else "") for i in n_fail.nonzero().flatten().tolist()],
         "per_clip": {motion.names[i]: round(norm[:, i].mean().item(), 4) for i in range(C)},

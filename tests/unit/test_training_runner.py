@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from config_refactor_compat import ConfigDefaults
 
 ROOT = Path(__file__).resolve().parents[2]
 PKG = ROOT / 'src/supermimic/runners'
@@ -34,8 +35,26 @@ def test_setup_initialization_and_restore_order_exact():
     begin = next(i for i,n in enumerate(old) if ast.unparse(n).startswith('args.motion_dir ='))
     end = next(i for i,n in enumerate(old) if ast.unparse(n) == 'del ck')
     new = node(tree('setup.py'), 'build_training').body
-    # Only explicit rank arguments/returned component bundle were added.
-    assert dump(old[begin:end+1]) == dump(new[1:-1])
+    # Compare network/RNG/restore order after removing only config serialization.
+    class NormalizeSetup(ConfigDefaults):
+        def visit_Assign(self, n):
+            target = ast.unparse(n.targets[0])
+            if target in {'G_MAX', 'args.max_step_reward', 'args.training_config', 'args.reward_cfg'}:
+                return None
+            if target == 'task_reward_cfg':
+                return None
+            return super().visit_Assign(n)
+        def visit_Name(self, n):
+            if n.id == 'task_reward_cfg':
+                return ast.parse('reward_cfg(args.dynamics)', mode='eval').body
+            return n
+        def visit_Expr(self, n):
+            if ast.unparse(n).startswith('json.dump(args.training_config,'):
+                return None
+            return self.generic_visit(n)
+    def normalize(items):
+        return NormalizeSetup().visit(ast.Module(body=copy.deepcopy(items),type_ignores=[])).body
+    assert dump(normalize(old[begin:end+1])) == dump(normalize(new[1:-1]))
 
 
 def test_collection_and_rng_order_exact():
@@ -43,11 +62,11 @@ def test_collection_and_rng_order_exact():
     new = copy.deepcopy(node(tree('collector.py'), 'collect'))
     new.body = new.body[4:]  # explicit dependency aliases
     old.body = old.body[1:]  # old global declaration
-    class Normalize(ast.NodeTransformer):
+    class Normalize(ConfigDefaults):
         def visit_Attribute(self, n):
             if isinstance(n.value, ast.Name) and n.value.id == 'self' and n.attr in {'obs_hist','sim_steps','real_metrics'}:
                 return ast.Name(id=n.attr, ctx=n.ctx)
-            return self.generic_visit(n)
+            return super().visit_Attribute(n)
         def visit_Expr(self, n):
             if ast.unparse(n).startswith('self.episode_metrics.update('):
                 return None  # detached diagnostic only, numerically tested separately

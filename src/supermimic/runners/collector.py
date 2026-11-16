@@ -1,6 +1,6 @@
 """Real environment sampling and replay insertion; no optimizer or file I/O."""
 import torch
-from supermimic.tasks.tracking.mdp import ACTION_CLIP, MAX_STEP_REWARD, OBS_DIM, normalize_xi, unflatten_state
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, OBS_DIM, normalize_xi, unflatten_state
 from supermimic.logging.legacy import SMOOTH_KEYS
 
 
@@ -35,7 +35,7 @@ class RolloutCollector:
             wm.in_norm.update(wm.inputs(S0, out["a"], normalize_xi(out["xi"]), out["a_prev"]))
             wm.update_output_normalization(S0, S1)
             self.sim_steps += args.num_envs * WORLD
-            stats["r"].append(out["r"].mean() / MAX_STEP_REWARD)
+            stats["r"].append(out["r"].mean() / mdp.max_step_reward)
             for k in SMOOTH_KEYS:
                 stats[k].append(out["terms"][k].mean())
             if "ep_len" in out:

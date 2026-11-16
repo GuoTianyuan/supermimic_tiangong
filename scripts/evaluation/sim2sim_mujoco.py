@@ -32,7 +32,7 @@ import torch
 import supermimic.models.common as networks
 from supermimic.envs.domain_randomization import DRCfg
 from supermimic.robots.kinematics import G1Kinematics
-from supermimic.tasks.tracking.mdp import ACTION_CLIP, MAX_STEP_REWARD, MDP, OBS_DIM, XI_DIM, reward_cfg
+from supermimic.tasks.tracking.mdp import ACTION_CLIP, MDP, OBS_DIM, XI_DIM, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
 from supermimic.models import Policy
@@ -100,6 +100,8 @@ xi = torch.zeros(1, XI_DIM, device=dev)  # no joint offsets
 pi = None
 if args.ckpt:
     ck = torch.load(args.ckpt, map_location=dev)
+    mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev),
+              reward_cfg(get_dynamics(), ck["args"].get("reward_cfg")))
     if ck["args"].get("robot", "g1") != "tiangong3":
         raise ValueError("not a tiangong3 checkpoint")
     K, Hh = ck["args"]["goal_frames"], ck["args"]["hist"]
@@ -180,7 +182,7 @@ def rollout(c: int):
             d.qvel[3:6] += rotation().T @ dv[3:]
             next_push = steps + rng.uniform(*push_cfg.push_interval_s) / CONTROL_DT
         a_prev, f = a, f1
-    return ret / ((end - int(motion.clip_start[c])) * MAX_STEP_REWARD), failed, steps, rec
+    return ret / ((end - int(motion.clip_start[c])) * mdp.max_step_reward), failed, steps, rec
 
 
 print(f"MuJoCo {mujoco.__version__} sim2sim | {'policy ' + args.ckpt if pi is not None else 'open-loop reference playback'}")

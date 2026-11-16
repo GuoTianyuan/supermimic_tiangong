@@ -10,7 +10,7 @@
 
 ```text
 src/supermimic/
-  configs/              训练 CLI 参数和默认值
+  configs/              命令行兼容适配与配置序列化
   models/               WM、Policy、Critic 网络及 RunningNorm
   learners/             WM 监督更新、Actor 想象更新、Critic 回归
   envs/                 Isaac Lab 场景、仿真步进与 domain randomization
@@ -18,7 +18,10 @@ src/supermimic/
   motions/              motion 加载、插值、活跃池与起点采样
   storage/              replay buffer
   tasks/tracking/
-    config.py           跟踪任务的奖励与终止阈值配置
+    tracking_env_cfg.py 环境、command、obs、action、奖励项、终止阈值
+    agents/             WM、Actor、Critic、replay、优化器与训练调度配置
+    configs/tiangong3.py 天工 full WBC 的具体配置入口
+    config.py           旧 RewardCfg/checkpoint 的兼容适配
     mdp/                state、actions、observations、rewards、terminations
   runners/              薄入口、训练依赖组装、采样、更新调度与 checkpoint
   logging/              每项奖励、回合统计、TensorBoard 和终端输出
@@ -41,6 +44,37 @@ logs/                   运行结果，不纳入 Git
 包内旧模块的迁移、职责边界和验证记录见 [包结构说明](docs/refactor/PACKAGE_LAYOUT.md)。
 特定服务器/GPU/日期的容量测试和排队脚本归入 `experiments/full_wbc_pool_20261111/scripts/`。
 个人 `.vscode` 配置与日志不提交。
+
+## 训练配置从哪里改
+
+优先读 `src/supermimic/tasks/tracking/configs/tiangong3.py` 的 `full_wbc()`：
+环境侧的 motion 池、DR、奖励和算法侧的 WM/Actor 窗口、batch、学习率放在一起组装。
+共用字段分别定义在 `tracking_env_cfg.py` 和 `agents/supermimic_cfg.py`。
+例如 `env.rewards.body_pos.weight/std` 控制身体位置奖励，
+`runner.world_model.wm_window` 控制 WM 训练窗口，`runner.actor.horizon` 控制想象长度。
+
+```bash
+# 只显示分组配置，不加载仿真器、不启动训练。
+python scripts/training/train.py --config tiangong3_full_wbc --print-config
+# 命令行覆盖预设中的单项；目录按实际机器填写。
+python scripts/training/train.py --config tiangong3_full_wbc \
+  --motion_dir /media/supermimic/data/full_wbc_validated \
+  --num_envs 2048 --wm_batch 2048 --pi_batch 2048 --print-config
+```
+
+`--config default`（省略时默认）完整保留旧命令行默认值。
+`tiangong3_full_wbc` 预设显式使用 DexEVT、full DR + contact、30%/20% 池、
+每卡环境/WM batch/Actor batch 各 4096、WM12/Actor48、gamma=.995。
+预设本身不分配 GPU；两卡/四卡仍由启动器决定，池容量需要按卡数另行核对。
+默认 `None` 表示延续已有的 checkpoint 继承规则；新训的参考窗仍为 1,6,...,46。
+`--print-config` 是解析请求的预览，`resolved=false` 表示还未读取 checkpoint。
+训练初始化后会保存实际分组 `config.json`，同时保留旧 `args.json` 和 checkpoint 的 flat args。
+
+奖励权重写在配置中，仿真与可微想象共用 `mdp/rewards.py`；每项先加权，最后乘 dt。
+正奖励权重变化时，最大回报、采样价值上限和日志归一化同步计算。
+续训/评测按 checkpoint 恢复保存的奖励和终止阈值；旧 checkpoint 缺少的新增权重使用原值。
+若显式预设与 checkpoint 的奖励不同，报错而非静默换目标。
+这是配置结构整理，默认网络、采样、物理、奖励数值和梯度不变；尚未合并脚底点位实验。
 
 ## 训练调度与日志整理（`bc_100hz_dev`）
 

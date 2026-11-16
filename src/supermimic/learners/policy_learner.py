@@ -8,7 +8,7 @@ from functools import partial
 import time
 import torch
 import torch.nn as nn
-from supermimic.tasks.tracking.mdp import unflatten_state, normalize_xi, MAX_STEP_REWARD, OBS_A_PREV
+from supermimic.tasks.tracking.mdp import unflatten_state, normalize_xi, OBS_A_PREV
 from .learner_utils import sync_grads as _sync_grads, set_requires_grad
 from .critic_learner import build_critic_learner
 
@@ -118,7 +118,7 @@ def build_policy_learner(*, args, wm, pi, critic, critic_targ, opt_pi, opt_v, bu
             torch.cuda.synchronize()
             print(f"[prof] imagine fwd {1e3*(tq1-tq0):.0f} ms | bwd {1e3*(tq2-tq1):.0f} ms | critic {1e3*(time.time()-tq2):.0f} ms", flush=True)
         v_stats = (v_end.mean(), v_end.max(), (v_end > G_MAX).float().mean())
-        return loss.detach(), v_mse, (r_sum / HZ / MAX_STEP_REWARD).mean(), gn.detach(), c.mean().detach(), *v_stats
+        return loss.detach(), v_mse, (r_sum / HZ / mdp.max_step_reward).mean(), gn.detach(), c.mean().detach(), *v_stats
 
     def a_prev_gain(n: int = 256) -> torch.Tensor:
         """Largest singular value of da_t / da_{t-1} through the newest observation, at n buffer states:

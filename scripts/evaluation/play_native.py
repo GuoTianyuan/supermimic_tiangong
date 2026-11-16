@@ -45,7 +45,7 @@ from supermimic.envs.domain_randomization import DRCfg
 from supermimic.envs.tracking_env import TrackingSim
 from supermimic.envs.sim_context import make_sim
 from supermimic.robots.kinematics import G1Kinematics
-from supermimic.tasks.tracking.mdp import MDP, MAX_STEP_REWARD, OBS_DIM, reward_cfg
+from supermimic.tasks.tracking.mdp import MDP, OBS_DIM, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride, goal_offsets
 from supermimic.models import Policy
@@ -65,7 +65,7 @@ kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion, kin, dev)
 motion.goal_stride = checkpoint_goal_stride(cfg)
 motion.goal_start = checkpoint_goal_start(cfg)
-mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(cfg.get("dynamics", "default")))
+mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(cfg.get("dynamics", "default"), cfg.get("reward_cfg")))
 K, H = cfg["goal_frames"], cfg["hist"]
 drop = parse_goal_drop(cfg.get("goal_drop", ""))
 pi = Policy(OBS_DIM, goal_frame_dim(drop) * K, hist=H, soft_clip_actions=cfg.get("act_soft_clip", False)).to(dev)
@@ -124,7 +124,7 @@ try:
                         report_wall, report_steps = now, steps
                 episode += 1
                 wall_elapsed = time.perf_counter() - wall_start
-                norm = total / ((int(motion.clip_len[0]) - 1) * MAX_STEP_REWARD)
+                norm = total / ((int(motion.clip_len[0]) - 1) * mdp.max_step_reward)
                 print(f"[play] episode={episode} simulated={steps * CONTROL_DT:.2f}s wall={wall_elapsed:.2f}s actual_speed={steps * CONTROL_DT / wall_elapsed:.2f}x reward={norm:.6f} failed={bool(env.failed_eval[0])}", flush=True)
                 if args.speed and (args.loops == 0 or episode < args.loops):
                     time.sleep(0.5)
