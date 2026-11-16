@@ -1,0 +1,61 @@
+训练调度和日志整理：bc_100hz_dev（2026-11-16）
+
+本次直接集成到原开发基线 bc_100hz_dev，基点 1c1f8e6。
+仅迁入 dev_logging 的整理提交 2affcdf；不合并其父分支的五点/弱化 Z 奖励实验。
+setup 和前后对照 fixture 使用 1c1f8e6 的原始构造/恢复逻辑，仍是 14 点和原高度奖励。
+main（同事原版）、bc_100hz（稳定快照）以及各实验分支未移动；服务器运行代码未替换。
+
+参考：本地 whole_body_tracking 的 MotionOnPolicyRunner 和 Isaac Lab RewardManager；
+官方 supermimic_ws 的 scripts/train.py、SuperMimicRunner、utils/logger.py。
+采用清晰入口、Runner/learner 分工、按项输出奖励与物理指标。
+
+代码职责：
+  runners/train.py             解析 CLI、设置机器人、仿真生命周期（35 行）
+  runners/setup.py             motion/模型/优化器创建和历史 checkpoint 恢复
+  runners/supermimic_runner.py  学习调度（162 行）
+  runners/collector.py         真实观测/噪声/action/replay 插入/归一化更新
+  runners/metrics.py           每日志窗口的跨卡归并，保留原统计口径
+  runners/checkpoints.py       原 checkpoint 字段及原子保存
+  runners/runtime.py           信号和跨卡停止协调
+  logging/logger.py            CSV、TensorBoard、终端逐项奖励
+  logging/episode.py           独立只读回合统计，不介入 reset 采样
+  logging/schema.py            显示名、单位和历史 CSV 转换
+  logging/legacy.py            旧指标/细诊断保留；runners/progress.py 为兼容入口
+
+训练数值：
+  奖励、PD、接触/自碰撞、归一化、网络、采样、优化器、训练更新顺序不改。
+  CLI 和 checkpoint 字段兼容；新增日志字段追加到 CSV 末尾，不移动旧字段。
+  主面板 Reward/* 是有符号、带权重的每秒奖励贡献，CSV 仍按每步存储。
+  Episode_Reward/* = 完成回合的平均累计分项奖励 / 最大回合时长，采用 Isaac Lab 口径。
+  回合均值按日志窗口结束的全部回合及跨卡数量加权，不是 last-100 deque。
+  没有结束回合时不记录假的零；正在进行的回合统计跨日志窗口保留。
+  Loss/critic_huber 使用真实反传的 survival 加权 Huber，全 minibatch 汇总。
+  旧最后 minibatch MSE 和 WM 每通道细节保留在 tensorboard_diagnostics。
+  历史事件无损移至 tensorboard_legacy，然后由 CSV 重建主面板；缺少历史回合分项不补造。
+
+即时查看历史 Adam/Muon：
+  http://127.0.0.1:6015
+  logs/wm_optimizer_20261114/tensorboard_readable/{adam,muon}
+  这是本地已同步快照（Adam 86200 / Muon 83950），不会自动拉取服务器新日志。
+  原来 6014 的 TensorBoard 和原始事件均保留。
+
+整理提交在五点实验父版本上的首次验证（已完成）：
+  77 项单元检查：初始化/续训顺序、collector/RNG顺序、学习调度和保存内容前后 AST 对照；
+  奖励单位、回合边界、跨卡计数归并、CSV 续训、旧事件迁移、实际事件文件读取等。
+  固定 replay 的三次更新：loss/gradient/weights/normalizers/optimizer/EMA 位级一致。
+  本机 RTX4090 + 原生 IsaacLab/Newton/MuJoCo-Warp：8 环境真实采样、WM/Actor/Critic 更新、
+  旧 checkpoint 续训、小池刷新、池状态保存和续训均完成，网络与指标有限。
+  原生物理两次运行非位级确定；另跑旧代码重复对照，改前后差异处于相同量级。
+  上述短程验证关闭 torch.compile；没有新增多卡/长期训练验证，不代表效果提升。
+  报告和终端实录：logs/dev_logging_20261116/validation.json。
+
+临时源代码上传到 a800_2 的请求被自动审批拒绝，未上传；全部新增运行验证在本机完成。
+
+迁回 bc_100hz_dev 的额外验证：
+  初始化/恢复顺序对照基点 1c1f8e6 的原始代码。
+  65 项当前基线单元检查全部通过；42 个配置/核心文件与基点逐字节一致。
+  固定 replay 的三轮 WM/Actor/Critic 更新逐位一致。
+  本机原生仿真：原入口/新入口各 8 环境三轮更新、保存完成；新入口从旧 last.pt 续训到第 5 轮。
+  新面板恢复 CSV 第 1～5 轮，旧 TensorBoard 事件保存在 tensorboard_legacy。
+  上述短测关闭 torch.compile，没有新增多卡或长期验证；原生物理非位级确定。
+  本次验证记录：logs/dev_logging_base_20261116/validation.json。

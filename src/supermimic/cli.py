@@ -3,7 +3,8 @@ import runpy
 
 
 def train():
-    runpy.run_module("supermimic.runners.train", run_name="__main__", alter_sys=True)
+    from supermimic.runners.train import main
+    main()
 
 
 def evaluate():

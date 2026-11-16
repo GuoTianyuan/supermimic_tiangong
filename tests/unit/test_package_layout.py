@@ -81,8 +81,8 @@ def test_split_numerical_functions_preserved():
     current["sync_grads"] = [sync]
     checked = 0
     for name, entries in BEFORE["functions"].items():
-        if name == "repository_root":
-            continue  # Path depth changed; separate asset-root tests cover this.
+        if name in {"repository_root", "train", "_request_stop", "stop_requested", "lr_at", "collect", "save_checkpoint"}:
+            continue  # Paths have separate checks; moved orchestration has test_training_runner.py.
         actual = {canonical(node) for node in current.get(name, [])}
         for entry in entries:
             expected = canonical(ast.parse(entry["code"]).body[0])
@@ -91,45 +91,8 @@ def test_split_numerical_functions_preserved():
     assert checked > 100
 
 
-def test_runner_schedule_and_checkpoint_flow_preserved():
-    moved = {
-        "sync_grads", "clip_finite_grads", "set_requires_grad", "_wm_rollout", "_wm_err",
-        "_imag_step", "_reward_term", "_critic_input", "reward_term", "critic_input_c",
-        "wm_update", "sample_valid_starts", "policy_update", "a_prev_gain",
-    }
-    moved_assignments = {
-        "ERR_FLOOR", "wm_rollout", "wm_err", "imag_step", "reward_term_c", "critic_input_gpu",
-        "wm_learner", "policy_learner",
-    }
-
-    class Runner(Normalize):
-        def visit_Expr(self, node):
-            call = ast.unparse(node.value)
-            if call.startswith("configure_reference_timing(") or "future reference offsets:" in call:
-                return None  # CLI/metadata only; independent reference-timing tests cover this.
-            return super().visit_Expr(node)
-
-        def visit_FunctionDef(self, node):
-            return None if node.name in moved else self.generic_visit(node)
-
-        def visit_Assign(self, node):
-            if any(isinstance(t, ast.Name) and t.id in moved_assignments for t in node.targets):
-                return None
-            return super().visit_Assign(node)
-
-        def visit_Call(self, node):
-            mapping = {
-                "wm_learner.update": "wm_update",
-                "policy_learner.update": "policy_update",
-                "policy_learner.action_loop_gain": "a_prev_gain",
-            }
-            if ast.unparse(node.func) in mapping:
-                node.func = ast.Name(id=mapping[ast.unparse(node.func)], ctx=ast.Load())
-            return self.generic_visit(node)
-
-    old = Runner().visit(ast.parse(BEFORE["runner_source"]))
-    new = Runner().visit(ast.parse((PACKAGE / "runners/train.py").read_text()))
-    assert ast.dump(old, include_attributes=False) == ast.dump(new, include_attributes=False)
+# Runner extraction is checked against the actual bc_100hz_dev source in test_training_runner.py.
+# Numerical learners/models/reward above still compare to the original pre-layout source.
 
 
 def test_package_root_and_task_boundaries():

@@ -98,7 +98,7 @@ def main():
     empty,empty_ch=metrics.flush(); assert all(v==0 for v in (*empty.values(),*empty_ch.values()))
     report['unequal_batches_masks_scales_rank_reduction_and_zero_valid'] = True
 
-    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/learners/wm_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/policy_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/critic_learner.py').read_text()+'\n'+(root/'src/supermimic/runners/progress.py').read_text(); tree=ast.parse(source)
+    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/learners/wm_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/policy_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/critic_learner.py').read_text()+'\n'+(root/'src/supermimic/logging/legacy.py').read_text(); tree=ast.parse(source)
     def extract(name, namespace, parsed=tree):
         node=next(n for n in ast.walk(parsed) if isinstance(n,ast.FunctionDef) and n.name==name)
         exec(compile(ast.Module(body=[node],type_ignores=[]),'<actual train '+name+'>','exec'),namespace)

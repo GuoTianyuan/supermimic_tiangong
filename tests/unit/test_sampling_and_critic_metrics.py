@@ -149,7 +149,7 @@ def main():
     for k,val in m0.flush().items(): assert abs(val-actual[k])<1e-7
     report['critic_weighted_all_minibatch_and_rank_sum_aggregation']=True
 
-    source=(root/'src/supermimic/runners/train.py').read_text()+'\n'+(root/'src/supermimic/learners/wm_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/policy_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/critic_learner.py').read_text()+'\n'+(root/'src/supermimic/runners/progress.py').read_text()
+    source='\n'.join(p.read_text() for p in (root/'src/supermimic/runners').glob('*.py'))+'\n'+(root/'src/supermimic/learners/wm_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/policy_learner.py').read_text()+'\n'+(root/'src/supermimic/learners/critic_learner.py').read_text()+'\n'+(root/'src/supermimic/logging/legacy.py').read_text()
     def critic_loop(text):
         loop=next(n for n in ast.walk(ast.parse(text)) if isinstance(n,ast.For) and ast.unparse(n.iter)=='range(args.critic_epochs)')
         return compile(ast.Module(body=[loop],type_ignores=[]),'<actual critic fit loop>','exec')

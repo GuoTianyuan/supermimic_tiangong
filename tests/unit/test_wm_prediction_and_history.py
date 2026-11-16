@@ -164,7 +164,7 @@ def main():
     report['history_h1_h2_h10_reset_buffer_wrap_and_unpadded_rng']=True
     # Parse modified training source; no simulator launch in this CPU test.
     for path in (root/'src/supermimic').rglob('*.py'): ast.parse(path.read_text(),filename=str(path))
-    source='\n'.join((root/f'src/supermimic/{path}').read_text() for path in ['runners/train.py','learners/wm_learner.py','learners/policy_learner.py'])
+    source='\n'.join((root/f'src/supermimic/{path}').read_text() for path in ['runners/train.py','runners/setup.py','runners/collector.py','learners/wm_learner.py','learners/policy_learner.py'])
     assert source.count('mdp.add_history_noise(')==2
     assert 'wm.update_output_normalization(S0, S1)' in source
     assert 'torch.maximum(wm.error_std(), ERR_FLOOR)' in source

@@ -20,7 +20,8 @@ src/supermimic/
   tasks/tracking/
     config.py           跟踪任务的奖励与终止阈值配置
     mdp/                state、actions、observations、rewards、terminations
-  runners/              训练调度、checkpoint、评测与日志输出
+  runners/              薄入口、训练依赖组装、采样、更新调度与 checkpoint
+  logging/              每项奖励、回合统计、TensorBoard 和终端输出
   utils/                旋转数学、资产路径、录像和指标汇总
 scripts/
   training/             训练入口
@@ -40,6 +41,33 @@ logs/                   运行结果，不纳入 Git
 包内旧模块的迁移、职责边界和验证记录见 [包结构说明](docs/refactor/PACKAGE_LAYOUT.md)。
 特定服务器/GPU/日期的容量测试和排队脚本归入 `experiments/full_wbc_pool_20261111/scripts/`。
 个人 `.vscode` 配置与日志不提交。
+
+## 训练调度与日志整理（`bc_100hz_dev`）
+
+`runners/train.py` 只负责解析参数、选择机器人、启动仿真并调用 Runner。
+`runners/setup.py` 创建 motion、网络和优化器，并恢复 checkpoint；
+`supermimic_runner.py` 调度 collect → WM → Actor/Critic；`collector.py` 负责真实采样；
+`checkpoints.py` 管理保存，`metrics.py` 做跨卡统计归并。已有 learners 的数学计算保持原样。
+
+日志分为两个目录：
+
+- `tensorboard/`：`Reward` 每项有符号的每秒贡献、`Episode_Reward` 回合累计奖励除以回合时长上限、
+  `Metrics` 跟踪误差和加速度、`Loss` 实际 WM/Actor/Critic Huber 损失、`Perf` 速度和内存。
+- `tensorboard_diagnostics/`：原始指标口径、WM 逐分量误差/归一化尺度等详细诊断。
+
+终端逐行展示奖励贡献，奖励分项按物理秒显示；CSV 原有字段和每步单位保留，新增回合字段追加在末尾。
+回合统计汇总本次日志窗口结束的所有回合，并按跨卡回合数加权。
+旧 run 首次用新 Logger 续训时，旧事件移至 `tensorboard_legacy/` 保留，再从 CSV 重建主面板；
+旧 CSV 没有回合分项时不生成假的 `Episode_Reward`。
+
+只想查看旧训练的新面板，无需续训：
+
+```bash
+python scripts/evaluation/log_dashboard.py --run_dir logs/<run> --output logs/<view>/<run>
+tensorboard --logdir logs/<view> --host 127.0.0.1 --port 6015
+```
+
+修改记录与验证范围见 [训练日志重构记录](docs/refactor/TRAINING_LOGGING.txt)。
 
 ## 环境与常用入口
 
