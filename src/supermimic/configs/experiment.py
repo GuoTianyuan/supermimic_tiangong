@@ -3,7 +3,7 @@ from dataclasses import asdict, fields, is_dataclass, replace
 import os
 from supermimic.tasks.tracking.tracking_env_cfg import TrackingEnvCfg, RandomizationRangesCfg, randomization_ranges
 from supermimic.tasks.tracking.agents.supermimic_cfg import SuperMimicRunnerCfg
-from supermimic.tasks.tracking.config import from_task_cfg, reward_cfg, TRACKING_TERMS, PENALTY_TERMS
+from supermimic.tasks.tracking.config import from_task_cfg, reward_cfg, checkpoint_reward_cfg, TRACKING_TERMS, PENALTY_TERMS
 
 CONFIG_NAMES = ("default", "tiangong3_full_wbc")
 
@@ -37,6 +37,7 @@ def cli_defaults(name="default"):
                 result[f.name] = value
     visit(env)
     visit(runner)
+    result.update(root_pos_z_weight=None, body_pos_z_mode=None)
     return result
 
 
@@ -50,13 +51,20 @@ def resolve_reward_config(args, checkpoint=None):
     env, _ = load_config(name)
     cfg = (reward_cfg(args.dynamics) if name == "default"
            else from_task_cfg(env.rewards, env.terminations))
+    overrides = {k: getattr(args, k) for k in ("root_pos_z_weight", "body_pos_z_mode")
+                 if getattr(args, k, None) is not None}
+    cfg = replace(cfg, **overrides).validate()
     if checkpoint is not None:
         old = checkpoint["args"]
-        saved = reward_cfg(old.get("dynamics", "default"), old.get("reward_cfg"))
+        saved = checkpoint_reward_cfg(old)
         if name != "default" and asdict(saved) != asdict(cfg):
             raise ValueError("Preset rewards/terminations differ from checkpoint; resume with --config default "
                              "to retain its objective, or start a new experiment")
+        if any(getattr(saved, key) != value for key, value in overrides.items()):
+            raise ValueError("Cannot resume with different reward settings; start a separate reward ablation")
         cfg = saved
+    for key in ("root_pos_z_weight", "body_pos_z_mode"):
+        setattr(args, key, getattr(cfg, key))
     args.reward_cfg = asdict(cfg)
     return cfg
 
@@ -133,6 +141,12 @@ def config_snapshot(args):
         cfg = reward_cfg(getattr(args, "dynamics", None) or "default")
     else:
         cfg = from_task_cfg(env.rewards, env.terminations)
+    if saved is None:
+        cfg = replace(cfg, **{k: getattr(args, k) for k in ("root_pos_z_weight", "body_pos_z_mode")
+                             if getattr(args, k, None) is not None}).validate()
+    env.rewards.root_pos_z_weight = cfg.root_pos_z_weight
+    env.rewards.body_pos_z_mode = cfg.body_pos_z_mode
+    env.rewards.body_point_offsets = cfg.body_point_offsets
     for name in TRACKING_TERMS:
         term = getattr(env.rewards, name)
         term.weight, term.std = getattr(cfg, "w_" + name), getattr(cfg, name + "_std")

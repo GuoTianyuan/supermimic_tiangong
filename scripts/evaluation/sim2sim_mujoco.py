@@ -32,6 +32,7 @@ import torch
 import supermimic.models.common as networks
 from supermimic.envs.domain_randomization import DRCfg
 from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.config import checkpoint_reward_cfg
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, MDP, OBS_DIM, XI_DIM, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
@@ -101,7 +102,7 @@ pi = None
 if args.ckpt:
     ck = torch.load(args.ckpt, map_location=dev)
     mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev),
-              reward_cfg(get_dynamics(), ck["args"].get("reward_cfg")))
+              checkpoint_reward_cfg(ck["args"], get_dynamics()))
     if ck["args"].get("robot", "g1") != "tiangong3":
         raise ValueError("not a tiangong3 checkpoint")
     K, Hh = ck["args"]["goal_frames"], ck["args"]["hist"]

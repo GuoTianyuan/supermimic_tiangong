@@ -82,8 +82,8 @@ def test_split_numerical_functions_preserved():
     current["sync_grads"] = [sync]
     checked = 0
     for name, entries in BEFORE["functions"].items():
-        if name in {"repository_root", "train", "_request_stop", "stop_requested", "lr_at", "collect", "save_checkpoint", "reward_cfg", "build_parser", "for_dynamics"}:
-            continue  # CLI/config defaults: test_layout/test_tracking_configs; runner: test_training_runner.
+        if name in {"repository_root", "train", "_request_stop", "stop_requested", "lr_at", "collect", "save_checkpoint", "reward_cfg", "build_parser", "for_dynamics", "reward"}:
+            continue  # Reward intentionally changed: exact legacy/rel-Z/point numerics tested separately. CLI/config defaults: test_layout/test_tracking_configs; runner: test_training_runner.
         actual = {canonical(node) for node in current.get(name, [])}
         for entry in entries:
             expected = canonical(ast.parse(entry["code"]).body[0])

@@ -10,6 +10,7 @@ from supermimic.motions.library import CONTROL_DT, MotionLib
 from supermimic.tasks.tracking.config import RewardCfg
 from .observations import OBS_NOISE, OBS_SCALE, obs, add_noise, add_history_noise, critic_features
 from .rewards import reward
+from .tracking_points import TrackingPoints
 from .terminations import termination, soft_termination
 
 
@@ -17,6 +18,7 @@ class MDP:
     def __init__(self, kin: G1Kinematics, motion: MotionLib, default_q: torch.Tensor, cfg: RewardCfg = RewardCfg()):
         self.kin, self.motion, self.cfg = kin, motion, cfg
         self.max_step_reward = cfg.validate().max_step_reward(CONTROL_DT)
+        self.tracking_points = TrackingPoints(kin, cfg.body_point_offsets) if cfg.body_point_offsets else None
         self.default_q = default_q
         mid, half = (kin.q_lo + kin.q_hi) / 2, (kin.q_hi - kin.q_lo) / 2
         self.soft_lo, self.soft_hi = mid - half * cfg.soft_limit_factor, mid + half * cfg.soft_limit_factor

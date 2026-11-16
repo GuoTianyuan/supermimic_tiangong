@@ -135,7 +135,7 @@ def test_default_reward_and_gradients_exactly_match_original():
             old = old_fn(mdp,S,f,a,prev,terms=with_terms,qd_prev=qdprev)
             new = mdp.reward(S,f,a,prev,terms=with_terms,qd_prev=qdprev)
             if with_terms:
-                assert old[1].keys() == new[1].keys()
+                assert set(new[1]) == set(old[1]) | {"e_body_pos_ref_z", "e_body_z_relative"}
                 for key in old[1]: torch.testing.assert_close(old[1][key],new[1][key],rtol=0,atol=0)
                 old,new = old[0],new[0]
             torch.testing.assert_close(old,new,rtol=0,atol=0)

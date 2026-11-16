@@ -8,6 +8,13 @@ import ast
 
 
 class ConfigDefaults(ast.NodeTransformer):
+    def visit_Dict(self, node):
+        extra = {"error_body_pos_ref_z_m", "error_body_z_relative_m"}
+        keep = [i for i,k in enumerate(node.keys) if not isinstance(k,ast.Constant) or k.value not in extra]
+        node.keys=[node.keys[i] for i in keep]
+        node.values=[node.values[i] for i in keep]
+        return self.generic_visit(node)
+
     def visit_Subscript(self, node):
         name = ast.unparse(node.value)
         if name == 'self.dr.friction':
@@ -53,6 +60,10 @@ class ConfigDefaults(ast.NodeTransformer):
 
     def visit_Assign(self, node):
         text = ast.unparse(node)
+        if ast.unparse(node.targets[0]) == "self.tracking_points":
+            return None  # Reward-only rigid point transform; tested numerically including gradients.
+        if text == "mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), checkpoint_reward_cfg(a_, DYNAMICS))":
+            return None
         # Robot defaults moved to the pure configuration table. Runtime values
         # are independently compared against the old ranges in DR tests.
         if text == "FRICTION_RANGE = randomization_ranges('tiangong3').friction":

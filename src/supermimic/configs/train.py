@@ -51,6 +51,10 @@ def build_parser(add_launcher_args=None):
     parser.add_argument("--gamma", type=float, default=defaults["gamma"])
     parser.add_argument("--lam", type=float, default=defaults["lam"])
     parser.add_argument("--action_noise", type=float, default=defaults["action_noise"])
+    parser.add_argument("--root_pos_z_weight", type=float, default=None,
+                        help="coefficient of squared root Z error; omitted: task preset or checkpoint")
+    parser.add_argument("--body_pos_z_mode", choices=["reference", "relative_root"], default=None,
+                        help="body-point height reward: absolute reference Z or relative to pelvis")
     parser.add_argument("--critic_epochs", type=int, default=defaults["critic_epochs"])
     parser.add_argument("--critic_minibatches", type=int, default=defaults["critic_minibatches"])
     parser.add_argument("--critic_tau", type=float, default=defaults["critic_tau"], help="per-iteration EMA rate of the target critic")

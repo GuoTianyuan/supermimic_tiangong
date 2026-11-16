@@ -13,6 +13,7 @@ ERRORS = {
     "error_root_ori_rad": "e_root_ori", "error_body_pos_m": "e_body_pos", "error_body_ori_rad": "e_body_ori",
     "error_body_linvel_mps": "e_body_linvel", "error_body_angvel_radps": "e_body_angvel",
     "error_joint_pos_rad": "e_joint_pos", "error_joint_vel_radps": "e_joint_vel",
+    "error_body_pos_ref_z_m": "e_body_pos_ref_z", "error_body_z_relative_m": "e_body_z_relative",
 }
 POOL_FIELDS = ("pool_active", "pool_resident", "pool_legacy", "pool_frames", "pool_gpu_gib", "pool_cpu_gib",
                "pool_refresh_s", "pool_loaded", "pool_catalog", "pool_selected", "pool_starts_seen",

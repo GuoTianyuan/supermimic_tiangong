@@ -1,0 +1,72 @@
+{
+  "dataset": "/media/supermimic/data/full_wbc_validated",
+  "dataset_clips": 306948,
+  "control_hz": 100,
+  "physics_hz": 400,
+  "per_rank": {
+    "num_envs": 4096,
+    "wm_batch": 4096,
+    "pi_batch": 4096
+  },
+  "reward": {
+    "action_rate": -0.4,
+    "joint_acc": -3e-06,
+    "tracking": "root XY plus 0.1 times squared root Z; root-relative link Z; velocities unchanged",
+    "joint_limit": -2.0,
+    "root_pos_z_weight": 0.1,
+    "body_pos_z_mode": "relative_root",
+    "term_height": 0.25
+  },
+  "training": {
+    "iterations": 320000,
+    "wm_window": 12,
+    "horizon": 48,
+    "gamma": 0.995,
+    "lam": 0.95,
+    "lr": 0.0002,
+    "utd": 0.4,
+    "buffer_steps": 1000,
+    "wm_batches": 10,
+    "goal_frames": 10,
+    "hist": 10,
+    "critic_epochs": 5,
+    "critic_minibatches": 4,
+    "critic_tau": 0.05,
+    "warmup_steps": 64,
+    "wm_only_iters": 500,
+    "lr_decay_iters": 250000,
+    "ckpt_every": 2500,
+    "log_every": 50,
+    "seed": 0,
+    "wm_prediction": "state_delta",
+    "goal_stride": 5,
+    "goal_start": 1,
+    "root_pos_z_weight": 0.1,
+    "body_pos_z_mode": "relative_root"
+  },
+  "dr": "all,contact",
+  "dr_curriculum": "3000,6000",
+  "dr_ramp": 2000,
+  "dynamics": "dexevt",
+  "amp": "bf16",
+  "self_collisions": true,
+  "run": "tg_full_wbc_100hz_relz01_adam_s0_20261116",
+  "branch": "bc_100hz_relz",
+  "base_commit": "1c1f8e6",
+  "server": "a800_1",
+  "world_size": 2,
+  "gpus": [
+    4,
+    5
+  ],
+  "global_envs": 8192,
+  "global_wm_batch": 8192,
+  "global_pi_batch": 8192,
+  "from_scratch": true,
+  "pool": {
+    "active_ratio": 0.15,
+    "replace_ratio": 0.1,
+    "refresh_iters": 1500
+  },
+  "optimizer_scope": "All original Adam optimizers; only reward height treatment differs"
+}

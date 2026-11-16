@@ -1,6 +1,6 @@
 """Tracking reward and termination parameters shared by simulation and imagination."""
 
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, field, fields
 import math
 from .tracking_env_cfg import RewardsCfg, TerminationsCfg
 
@@ -20,6 +20,9 @@ class RewardCfg:
     body_linvel_std: float = 1.0
     body_angvel_std: float = 3.14
     root_pos_std: float = 0.3
+    root_pos_z_weight: float = 1.0
+    body_pos_z_mode: str = "reference"
+    body_point_offsets: dict[str, tuple[float, float, float]] = field(default_factory=dict)
     root_ori_std: float = 0.4
     w_action_rate: float = -0.4
     w_joint_acc: float = 0.0  # sum of squared joint accelerations over the control step [(rad/s^2)^2]
@@ -28,11 +31,25 @@ class RewardCfg:
     term_height: float = 0.25
     term_tilt: float = 0.8
 
+    def __post_init__(self):
+        if not math.isfinite(self.root_pos_z_weight) or self.root_pos_z_weight < 0:
+            raise ValueError("root_pos_z_weight must be finite and nonnegative")
+        if self.body_pos_z_mode not in ("reference", "relative_root"):
+            raise ValueError("body_pos_z_mode must be reference or relative_root")
+        if not isinstance(self.body_point_offsets, dict):
+            raise ValueError("body_point_offsets must map link names to local xyz offsets")
+        for name, xyz in self.body_point_offsets.items():
+            if not isinstance(name, str) or not name or len(xyz) != 3 or not all(math.isfinite(x) for x in xyz):
+                raise ValueError("body_point_offsets needs named links and finite 3D offsets")
+        self.body_point_offsets = {name: tuple(xyz) for name, xyz in self.body_point_offsets.items()}
+
     def max_step_reward(self, control_dt):
         return sum(getattr(self, "w_" + name) for name in TRACKING_TERMS) * control_dt
 
     def validate(self):
-        if not all(math.isfinite(value) for value in asdict(self).values()):
+        self.__post_init__()
+        if not all(math.isfinite(value) for name, value in asdict(self).items()
+                   if name not in ("body_pos_z_mode", "body_point_offsets")):
             raise ValueError("Reward/termination values must be finite")
         for name in TRACKING_TERMS:
             if getattr(self, "w_" + name) < 0 or getattr(self, name + "_std") <= 0:
@@ -51,7 +68,9 @@ PENALTY_TERMS = ("action_rate", "joint_acc", "joint_limit")
 
 
 def from_task_cfg(rewards: RewardsCfg, terminations: TerminationsCfg) -> RewardCfg:
-    values = {"soft_limit_factor": rewards.soft_limit_factor, **asdict(terminations)}
+    values = {"soft_limit_factor": rewards.soft_limit_factor, **asdict(terminations),
+              "root_pos_z_weight": rewards.root_pos_z_weight, "body_pos_z_mode": rewards.body_pos_z_mode,
+              "body_point_offsets": rewards.body_point_offsets}
     for name in TRACKING_TERMS:
         term = getattr(rewards, name)
         values.update({"w_" + name: term.weight, name + "_std": term.std})
@@ -72,3 +91,12 @@ def reward_cfg(dynamics: str = "default", saved: dict | None = None) -> RewardCf
             raise ValueError(f"Reward settings require another implementation: {sorted(unknown)}")
         cfg = RewardCfg(**{**asdict(cfg), **saved})
     return cfg.validate()
+
+
+def checkpoint_reward_cfg(saved_args: dict, dynamics: str | None = None) -> RewardCfg:
+    """Old checkpoints keep absolute heights/link origins; relative-Z ablations retain their fields."""
+    saved = dict(saved_args.get("reward_cfg") or {})
+    for key in ("root_pos_z_weight", "body_pos_z_mode"):
+        if saved_args.get(key) is not None:
+            saved[key] = saved_args[key]
+    return reward_cfg(dynamics or saved_args.get("dynamics") or "default", saved)

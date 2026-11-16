@@ -52,6 +52,7 @@ from supermimic.envs.domain_randomization import DRCfg, describe, parse_terms
 from supermimic.envs.tracking_env import TrackingSim
 from supermimic.envs.sim_context import make_sim
 from supermimic.robots.kinematics import G1Kinematics
+from supermimic.tasks.tracking.config import checkpoint_reward_cfg
 from supermimic.tasks.tracking.mdp import OBS_DIM, MDP, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, motion_group, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
@@ -107,7 +108,7 @@ def group_table(res: dict, top: int = 25) -> str:
 def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
     a_ = ck["args"]
     mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev),
-              reward_cfg(DYNAMICS, a_.get("reward_cfg")))
+              checkpoint_reward_cfg(a_, DYNAMICS))
     env.mdp = mdp
     env.G_max = mdp.max_step_reward / (1 - env.gamma)
     if a_.get("robot", "g1") != args.robot:

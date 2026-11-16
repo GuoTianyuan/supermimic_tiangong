@@ -97,7 +97,7 @@ def test_training_cli_unchanged(monkeypatch):
     monkeypatch.setenv('SUPERMIMIC_ROBOT','g1')
     from supermimic.configs.train import build_parser
     expected=json.loads(BASELINE.read_text())['cli']
-    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer", "config", "print_config"}]==expected
+    assert [x for x in schema(build_parser()) if x["dest"] not in {"goal_stride", "goal_start", "allow_reference_timing_change", "wm_optimizer", "config", "print_config", "root_pos_z_weight", "body_pos_z_mode"}]==expected
     p=build_parser()
     a=p.parse_args(['--robot','tiangong3','--num_envs','4096','--wm_prediction','velocity_integrated','--no-act_soft_clip'])
     assert (a.robot,a.num_envs,a.wm_prediction,a.act_soft_clip)==('tiangong3',4096,'velocity_integrated',False)

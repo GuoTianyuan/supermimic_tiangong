@@ -56,3 +56,27 @@ Isaac RewardManager，也没有通过此整理改变模拟器。
   CLI 覆盖和 checkpoint 冲突检测通过。既有模型/奖励/learner/调度回归测试通过。
   --print-config 确认显示完整 DR 范围；git diff --check 通过。
   本机没有可用 CUDA/NVML；未做 GPU 仿真或服务器训练，未修改部署代码。
+
+2026-11-16：主开发基线合并相对 Z + 单脚底点（本地起点 3846de9）
+  用户选择：保留目录整理，减弱 ref Z，脚上只保留一个跟踪点。
+  Git合并来源 bc_100hz_relz@ed3ba12；其余实现适配当前分组配置与Runner。
+  full_wbc 预设：root_pos_z_weight=.1、body_pos_z_mode=relative_root。
+  原14点里左右 ankle_roll 点替换为各自局部(.045,0,-.058)m的一个足底中心。
+  参考和实际同时使用 p+R*r 与 v+omega×(R*r)，保留原姿态和角速度奖励。
+  没有追加双点分支里的 w_foot_pos 奖励，也没有提高脚部权重或改变std。
+  点位变换只作用于reward，不改变FK库/缓存、Actor命令观测、Critic特征、WM监督或网络。
+  root位置奖励仍乘.5，Z权重仅乘在平方误差上；最大步奖励仍.05。
+  终止阈值不变；不是消除绝对高度终止，也不是将每帧脚强制贴地。
+  普通resume保持checkpoint的目标；旧checkpoint缺少offset字段时仍使用原点。
+  旧relz的flat flags/reward_cfg两种记录均支持，评测/native play/sim2sim统一恢复。
+  当前代码只合入14点版本；Muon/手部阻抗/五点实验保持独立。
+
+  验证：CPU tg_supermimic，完整pytest tests/unit：101 passed。
+  默认旧奖励与旧源代码逐项数值和梯度严格一致；relz原分支数值测试通过。
+  新基线完整匹配时奖励达到.05，无额外foot奖励；14点数和Actor/Critic输入保持。
+  MuJoCo真实模型的足底点位置与点Jacobian线速度和Torch实现相符（3e-6容差）。
+  绕左踝pitch扰动后，移动的足底点有非零位置奖励梯度；原姿态奖励保持一致。
+  多时间维/缓存参考、torch.compile(aot_eager)前向反向、缓存不被修改通过。
+  新/旧/relz checkpoint恢复、JSON往返和冲突检查通过；配置预览不加载Torch/Isaac。
+  本机无CUDA/NVML，未验证GPU learner或训练效果；未启训，未改部署、未推送远端。
+  分支清单和清理建议见 BRANCHES_20261116.txt；本次不删除其他分支。

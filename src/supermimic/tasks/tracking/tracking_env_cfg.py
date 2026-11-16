@@ -32,6 +32,11 @@ class RewardsCfg:
     joint_acc: PenaltyCfg = field(default_factory=lambda: PenaltyCfg(0.0))
     joint_limit: PenaltyCfg = field(default_factory=lambda: PenaltyCfg(-2.0))
     soft_limit_factor: float = 0.9
+    root_pos_z_weight: float = 1.0  # coefficient of Z error squared in root-position exponential
+    body_pos_z_mode: str = "reference"  # absolute reference Z, or relative_root
+    # Replace link-origin positions/linear velocities for these reward points only.
+    # Rotation/angular velocity, FK caches, commands, obs and critic features stay at their original frames.
+    body_point_offsets: dict[str, tuple[float, float, float]] = field(default_factory=dict)
 
 
 @dataclass
