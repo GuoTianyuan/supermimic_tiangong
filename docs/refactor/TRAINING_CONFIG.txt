@@ -80,3 +80,15 @@ Isaac RewardManager，也没有通过此整理改变模拟器。
   新/旧/relz checkpoint恢复、JSON往返和冲突检查通过；配置预览不加载Torch/Isaac。
   本机无CUDA/NVML，未验证GPU learner或训练效果；未启训，未改部署、未推送远端。
   分支清单和清理建议见 BRANCHES_20261116.txt；本次不删除其他分支。
+
+2026-11-16：单脚底跟踪点前移
+  按用户要求，将tiangong3_full_wbc的左右脚局部offset从(.045,0,-.058)m调整为(.09,0,-.058)m。
+  仍每脚一个点，替换现有14点中的ankle-roll原点；Y/Z、奖励权重与std、位置/速度换算均保持。
+  点位改称足底前部点；原姿态奖励保留，obs/WM/Critic和碰撞几何未变。
+  固定踝原点的纯pitch转动10度时，点位移由12.796mm增至18.664mm（+45.85%）。
+  沿X前移不增加绕局部X轴的roll杠杆；body_pos仍按14点平均，不能据此保证消除垫脚。
+  现有checkpoint继续按保存的offset恢复，不会静默改写已有模型的奖励定义。
+  验证：test_single_sole_tracking + test_tracking_configs + test_relative_height_reward：25 passed。
+  包含MuJoCo点位置/点Jacobian速度（3e-6容差）、compiled前后向、相对Z、checkpoint配置兼容。
+  可视化：logs/sole_tracking_forward_20261116/index.html、sole_points.png。
+  未启动/恢复训练，未改部署权重，未推送远端。

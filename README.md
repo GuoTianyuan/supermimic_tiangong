@@ -98,13 +98,14 @@ CLI 覆盖 robot/dynamics 时，同步选择对应的默认范围；预设中另
 env.rewards.root_pos_z_weight = 0.1
 env.rewards.body_pos_z_mode = "relative_root"
 env.rewards.body_point_offsets = {
-    "ankle_roll_l_link": (0.045, 0.0, -0.058),
-    "ankle_roll_r_link": (0.045, 0.0, -0.058),
+    "ankle_roll_l_link": (0.090, 0.0, -0.058),
+    "ankle_roll_r_link": (0.090, 0.0, -0.058),
 }
 ```
 
 骨盆位置奖励使用 `ex² + ey² + 0.1*ez²`，整项权重仍为 0.5；link 高度相对骨盆计算。
-每脚一个标称足底中心点替代原 14 点中对应的 ankle-roll 原点；没有新增 foot 奖励项或改变其权重。
+每脚一个足底前部点替代原 14 点中对应的 ankle-roll 原点；相对踝原点向前90 mm、向下58 mm。
+前移点位提高对脚部俯仰误差的敏感度；没有新增 foot 奖励项或改变其权重。
 位置使用 `p + R*r`，同一点的线速度使用 `v + omega × (R*r)`，实际与参考使用相同换算。
 身体姿态/角速度奖励保留，绝对骨盆高度的 0.25 m 终止阈值仍保留。
 这是奖励侧的点位替换：原始 FK/motion 缓存、Actor/WM/Critic 输入、网络、PD、URDF、碰撞和 DR 不变。

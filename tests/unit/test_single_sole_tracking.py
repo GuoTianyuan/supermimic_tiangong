@@ -45,7 +45,7 @@ def sample():
 def test_exactly_one_point_per_foot_and_no_added_reward_weight():
     new,old,S,f,a,cached=sample()
     assert new.cfg.body_point_offsets=={
-        'ankle_roll_l_link':(.045,0.,-.058),'ankle_roll_r_link':(.045,0.,-.058)}
+        'ankle_roll_l_link':(.09,0.,-.058),'ankle_roll_r_link':(.09,0.,-.058)}
     assert len(new.kin.tracked_idx)==14
     assert (new.tracking_points.offsets.abs().sum(-1)>0).sum()==2
     assert new.max_step_reward==old.max_step_reward==.05

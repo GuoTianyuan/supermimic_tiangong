@@ -11,10 +11,11 @@
   bc_100hz_5point_relz   五点EE奖励 + 相对高度实验，未列入本次删除名单。
   bc_100hz_contact      双手外力/可调刚度阻抗实验，未列入本次删除名单。
 
-主开发基线代码（清理前HEAD：efe1527，本次清理不修改运行代码）
+主开发基线代码（合并HEAD：efe1527；点位包含同日后续前移调整）
   保留runners / learners / models / envs / motions / tasks结构和分组配置。
   已合入bc_100hz_relz@ed3ba12：root_pos_z_weight=.1，body_pos_z_mode=relative_root。
-  每脚一个足底中心，offset=(.045,0,-.058)m，相对于各自ankle_roll_link。
+  每脚一个足底前部点，offset=(.09,0,-.058)m，相对于各自ankle_roll_link。
+  同日按用户要求从X=.045移到.09，提高俯仰灵敏度；其余奖励设置保持。
   替换原14点中的两个ankle原点；位置与线速度同步换算；姿态/角速度保持。
   不增加额外foot reward或权重。obs、critic输入、WM监督及原FK参考缓存保持原含义。
   新基线使用--config tiangong3_full_wbc；default/旧checkpoint保留原任务语义。

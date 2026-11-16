@@ -34,11 +34,12 @@ def full_wbc():
     env.rewards.joint_limit.weight = -2.0
     env.rewards.root_pos_z_weight = 0.1
     env.rewards.body_pos_z_mode = "relative_root"
-    # One nominal sole-center point per foot, in ankle_roll-link coordinates [m].
+    # One forefoot sole point per foot, in ankle_roll-link coordinates [m].
+    # X=0.09 increases pitch sensitivity; Y=0 and nominal sole height Z=-0.058 stay fixed.
     # Replace the two ankle points within the existing 14-point reward, without an extra reward term.
     env.rewards.body_point_offsets = {
-        "ankle_roll_l_link": (0.045, 0.0, -0.058),
-        "ankle_roll_r_link": (0.045, 0.0, -0.058),
+        "ankle_roll_l_link": (0.090, 0.0, -0.058),
+        "ankle_roll_r_link": (0.090, 0.0, -0.058),
     }
 
     runner = SuperMimicRunnerCfg()
