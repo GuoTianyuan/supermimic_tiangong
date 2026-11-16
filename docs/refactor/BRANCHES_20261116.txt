@@ -1,53 +1,65 @@
 2026-11-16 本地主仓库分支整理记录
 仓库：/home/mig/tg_supermimic；主开发分支：bc_100hz_dev。
-本次合并后共有 19 个本地分支；未删除分支、未推送、未 fetch，也未更改服务器训练。
-远端跟踪引用只是现有本地记录，不等于本次实时访问远端。
+清理时间：2026-11-16T20:31:52.537572+08:00
+按用户列出的名单删除14个本地分支，并移除7个已核查干净、无关联进程的旧/tmp worktree。
+当前剩余5个本地分支，主工作区仍为bc_100hz_dev。未访问或修改远端/服务器。
 
-本次主开发基线
-  保留已经整理的 runners / learners / models / envs / motions / tasks 包结构和分组配置。
-  正式合入 bc_100hz_relz@ed3ba12：root_pos_z_weight=.1，body_pos_z_mode=relative_root。
-  相对高度分支的测试/实验记录保留，但运行组装使用当前 setup/Runner，不回退到旧 train.py。
-  取代 bc_100hz_feet@469edd2 的双点附加奖励方案：现有14点中的两只脚各改成一个
-  足底中心点，offset=(.045,0,-.058)m，相对于各自 ankle_roll_link。
-  只采用旧 feet 分支的虚拟点几何思路；原双点分支未做整分支 Git 合并。
-  不增加 w_foot_pos/foot_pos_std，也不额外加权；同一点的线速度做 omega×offset 换算。
-  配置在 tasks/tracking/configs/tiangong3.py，通用奖励声明在 tracking_env_cfg.py。
-  新基线使用 --config tiangong3_full_wbc。default/旧 checkpoint 保留原任务语义。
-  未合入5点 tracking、手部阻抗或 Muon；当前仍是14点 tracking + Adam。
+当前保留
+  bc_100hz_dev          主开发：14点tracking + Adam + 相对link高度 + 弱骨盆Z + 单足底点。
+  bc_100hz              原100Hz full-WBC参照。
+  main                  同事原版50Hz控制/200Hz物理参照。
+  bc_100hz_5point_relz   五点EE奖励 + 相对高度实验，未列入本次删除名单。
+  bc_100hz_contact      双手外力/可调刚度阻抗实验，未列入本次删除名单。
 
-建议保留（主开发与参照）
-  bc_100hz_dev                         本次主开发基线。
-  bc_100hz                 c0bd65f     原100Hz full-WBC稳定参照，已是dev祖先；可长期用tag替代。
-  main                     8cefd07     同事原版50Hz控制/200Hz物理参考。
+主开发基线代码（清理前HEAD：efe1527，本次清理不修改运行代码）
+  保留runners / learners / models / envs / motions / tasks结构和分组配置。
+  已合入bc_100hz_relz@ed3ba12：root_pos_z_weight=.1，body_pos_z_mode=relative_root。
+  每脚一个足底中心，offset=(.045,0,-.058)m，相对于各自ankle_roll_link。
+  替换原14点中的两个ankle原点；位置与线速度同步换算；姿态/角速度保持。
+  不增加额外foot reward或权重。obs、critic输入、WM监督及原FK参考缓存保持原含义。
+  新基线使用--config tiangong3_full_wbc；default/旧checkpoint保留原任务语义。
+  未合入5点tracking、手部阻抗或Muon。
 
-已被dev完整包含，优先清理分支名（提交仍可从dev追溯）
-  bc_100hz_relz            ed3ba12     本次已合并。
-  control-100hz            65c6d15     早期100Hz版本。
-  control-100hz-pool       cfab193     早期full-WBC活跃池，dev包含其历史。
+足底点验证
+  tests/unit/test_single_sole_tracking.py::test_sole_positions_and_velocities_match_mujoco_point_jacobian
+  使用当前Tiangong MJCF，mj_forward独立计算脚部位姿，mj_jac计算点Jacobian×qvel。
+  两脚位置/线速度绝对容差均3e-6，本次重新执行通过（1 passed）。
+  上次合并后完整unit suite为101 passed；本次只改分支引用与本记录，未重复全套。
 
-实现被取代/组织已移入dev，建议先留归档tag再删分支名
-  bc_100hz_feet            469edd2     每脚heel/toe附加奖励；新dev改成单脚底点替换。
-  dev_logging              2affcdf     runner/日志整理已移入dev，但该分支同时含5点/relz实验历史；
-                                       不是纯粹的重复分支，不宜按完全merged直接丢掉。
+已删除分支及提交
+  已在dev历史内的分支不另建tag；其他分支保留轻量archive/20261116/<原分支名> tag。
+  tag只保留提交引用，不保留额外工作目录。
+  bc_100hz_relz                             ed3ba1216449831e9feaa826c1a4107e593da60d  已在dev历史中
+  control-100hz                             65c6d15e9e128d994d3956e315fea4ba77a2ec25  已在dev历史中
+  control-100hz-pool                        cfab19301b72fbd62eca4da593c16c91b9ccdacd  已在dev历史中
+  bc_100hz_feet                             469edd23ba5fee64edadd32bbe01f4bd1f432a0f  archive/20261116/bc_100hz_feet
+  dev_logging                               2affcdf0ca9bdbe340d88ed37ecaca526542841c  archive/20261116/dev_logging
+  bc_100hz_muon                             033609e506592f2801e966349f483ed37d730f02  archive/20261116/bc_100hz_muon
+  sonic_noise                               ee8ac1ddfbce2d5874eeaa1aedaad84e2217c7af  archive/20261116/sonic_noise
+  ablation/no-delay                         e05c57e047216ef2e537ffed6eb6044ccbce598b  archive/20261116/ablation/no-delay
+  control-100hz-compact                     25cbca5236509dd61ddf17a47e7a4e051a7f5d8f  archive/20261116/control-100hz-compact
+  experiment/control-100hz-smooth           9bd4442ac2c221cf1a00b3d06bd3ac9fcf88d035  archive/20261116/experiment/control-100hz-smooth
+  experiment/control-100hz-w12-h48          4d90866d834ff0a3b2ac1f5a3ead83d9cd456536  archive/20261116/experiment/control-100hz-w12-h48
+  experiment/control-100hz-physics200       78f1f7fbe4d1ed2fd30e633f40cb2587d9423e63  archive/20261116/experiment/control-100hz-physics200
+  experiment/control-50hz-physics400        bb508ba1b2da51185397a72f6b72b269aaa2e7bc  archive/20261116/experiment/control-50hz-physics400
+  bc_100hz_5point                           deee24f0aa9375ceb4f3432fe0a5347a0ec61c52  archive/20261116/bc_100hz_5point
 
-独立功能消融：暂留，或归档tag后不再作为日常开发分支
-  bc_100hz_muon            033609e     WM隐藏矩阵Muon+其余Adam，对照仍独立。
-  bc_100hz_contact         a9c8148     双手外力/可调刚度阻抗与WM条件对照，未合入。
-  bc_100hz_5point          deee24f     五点EE奖励、原高度，未合入。
-  bc_100hz_5point_relz     7b17d7a     五点EE奖励+相对高度，未合入；本次仍保留14点。
+已移除worktree
+  /tmp/tg_sonic_100hz_compact
+  /tmp/tg_sonic_100hz_physics200
+  /tmp/tg_sonic_100hz_smooth
+  /tmp/tg_sonic_100hz_w12_h48
+  /tmp/tg_sonic_50hz_physics400
+  /tmp/tg_sonic_no_delay
+  /tmp/tg_sonic_noise
 
-旧实验分支：建议归档tag后清理，7个都有本地/tmp worktree
-  ablation/no-delay                    e05c57e  50Hz无delay上下文消融。
-  control-100hz-compact                 25cbca5  身体参考CPU存储。
-  sonic_noise                          ee8ac1d  SONIC动作噪声std .2/.4。
-  experiment/control-100hz-smooth       9bd4442  100Hz平滑reward/gamma。
-  experiment/control-100hz-w12-h48      4d90866  平滑版WM12/Actor48。
-  experiment/control-100hz-physics200   78f1f7f  100Hz控制/200Hz物理。
-  experiment/control-50hz-physics400    bb508ba  50Hz控制/400Hz物理。
-  本次查看这7个worktree的git状态均干净。实际清理前还应检查关联进程与非Git文件，
-  先归档分支，再按需移除worktree；本次没有执行删除。
+非Git文件保留
+  旧sonic_noise worktree中的两份launch_manifest.json已复制到：
+  logs/branch_cleanup_20261116/sonic_noise/logs/launcher_verify_02/launch_manifest.json
+  logs/branch_cleanup_20261116/sonic_noise/logs/launcher_verify_04/launch_manifest.json
+  其他被清理的ignored文件均为Python字节码缓存。
+  机器可读清理记录：logs/branch_cleanup_20261116/result.json。
 
-远端跟踪引用（未实时刷新）
-  github/bc_100hz、github/bc_100hz_dev：用户GitHub仓库。
-  origin/main、origin/mimic、origin/jiajun、origin/one_motion_mimic：同事原仓库。
-  本次只合本地bc_100hz_dev；没有删除/覆盖任何远端分支。
+远端范围
+  本次仅清理本地分支；未fetch、未push、未删除远端分支。
+  原有github/bc_100hz、github/bc_100hz_dev以及origin跟踪引用保持不变。
