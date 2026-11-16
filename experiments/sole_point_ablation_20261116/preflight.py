@@ -1,4 +1,5 @@
 """Validate two-rank learning, pool rotation, resume and production-sized updates."""
+import argparse
 import csv
 import json
 import math
@@ -35,23 +36,42 @@ def inspect(run, iteration):
         for state in ck[key]['state'].values():
             assert all(torch.isfinite(t).all() for t in state.values() if isinstance(t, torch.Tensor)), key
     rows = list(csv.DictReader((path/'train_log.csv').open()))
-    assert rows and all(math.isfinite(float(v)) for row in rows for v in row.values())
+    assert rows
+    for row in rows:
+        for key, value in row.items():
+            value = float(value)
+            # Episode means are intentionally absent when this window has no completed episodes.
+            empty_episode_mean = key.startswith('episode_') and float(row['episodes_ended']) == 0
+            assert math.isfinite(value) or (empty_episode_mean and math.isnan(value)), (key, value)
     assert all(float(row['sim_nonfinite']) == 0 for row in rows)
     assert 'error_body_pos_ref_z_m' in rows[-1] and 'error_body_z_relative_m' in rows[-1]
     return dict(passed=True, run=run, iteration=iteration, reward=a['reward_cfg'],
-                finite_networks_optimizers_metrics=True, refreshes=[p['refresh_count'] for p in ck['motion_pool']],
+                finite_networks_optimizers_training_metrics=True, refreshes=[p['refresh_count'] for p in ck['motion_pool']],
                 cuda_memory=ck.get('cuda_memory'))
 
 
 if __name__ == '__main__':
     ART.mkdir(parents=True, exist_ok=True)
-    result = dict(passed=False, started=time.strftime('%F %T'))
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--continue', dest='continue_run', action='store_true')
+    options = parser.parse_args()
+    result = json.loads((ART/'preflight.json').read_text()) if options.continue_run else dict(passed=False, started=time.strftime('%F %T'))
+    if 'error' in result:
+        result.setdefault('previous_errors', []).append(result.pop('error'))
     base = [sys.executable, 'experiments/full_wbc_pool_20261111/scripts/run_pool_training.py',
             '--gpus', '0,1', '--config', str(CFG), '--smoke', '--motion-dir', str(DATA)]
     def stage(name, args, iteration):
         print(f'[preflight] {name}', flush=True)
-        subprocess.run(base + args, cwd=ROOT, check=True)
+        if options.continue_run and result.get(name, {}).get('passed'):
+            return
         run = args[args.index('--run')+1]
+        checkpoint = ROOT/'logs'/run/'last.pt'
+        completed = False
+        if options.continue_run and checkpoint.exists():
+            import torch
+            completed = torch.load(checkpoint, map_location='cpu', weights_only=False)['iteration'] == iteration
+        if not completed:
+            subprocess.run(base + args, cwd=ROOT, check=True)
         result[name] = inspect(run, iteration)
         (ART/'preflight.json').write_text(json.dumps(result, indent=2)+'\n')
     try:
