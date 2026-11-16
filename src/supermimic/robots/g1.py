@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from supermimic.utils.paths import DATA_ROOT
+from supermimic.tasks.tracking.tracking_env_cfg import randomization_ranges
 
 import isaaclab.sim as sim_utils
 from isaaclab.actuators import ImplicitActuatorCfg
@@ -153,7 +154,7 @@ TORSO_BODY = 'torso_link'
 
 DEFAULT_MOTION = os.path.join(DATA_DIR, 'lafan1_g1')
 
-FRICTION_RANGE = (0.3, 1.2)
+FRICTION_RANGE = randomization_ranges("g1").friction
 
 def set_dynamics(name):
     if name != 'default':

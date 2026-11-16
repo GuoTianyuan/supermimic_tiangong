@@ -16,12 +16,13 @@ first layers of a checkpoint without it when resuming with it.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field
 
 import torch
 
+from supermimic.tasks.tracking.tracking_env_cfg import RandomizationRangesCfg, randomization_ranges
 from supermimic.tasks.tracking.mdp import XI_DIM
-from supermimic.robots import JOINT_NAMES, ROBOT_NAME
+from supermimic.robots import FRICTION_RANGE, JOINT_NAMES, ROBOT_NAME
 
 TERMS = ("pd", "push", "mass", "armature", "joint_friction", "delay", "contact")
 ALL_TERMS = frozenset(TERMS) - {"contact"}  # what "all" meant when the checkpoints stored it
@@ -98,38 +99,24 @@ def curriculum_scale(terms: frozenset[str], curriculum: tuple[int, int] | None, 
 
 
 @dataclass(frozen=True)
-class DRCfg:
+class DRCfg(RandomizationRangesCfg):
+    """Runtime context layout plus the task's declared physical ranges.
+
+    Range fields are keyword-only; DRCfg(terms) remains compatible.
+    """
     terms: frozenset[str] = frozenset()
-    kp_scale: tuple[float, float] = (0.75, 1.25)  # per joint, every episode
-    kd_scale: tuple[float, float] = (0.75, 1.25)
-    push_interval_s: tuple[float, float] = (1.0, 5.0)  # per environment
-    push_lin_vel: tuple[float, float, float] = (0.5, 0.5, 0.2)  # half-widths added to the root velocity (world) [m/s]
-    push_ang_vel: tuple[float, float, float] = (0.52, 0.52, 0.78)  # [rad/s]
-    mass_scale: tuple[float, float] = (0.85, 1.15)  # per rigid segment with its inertia, at start-up
-    armature: tuple[float, float] = (0.002, 0.06)  # [kg m^2], at start-up
-    ankle_armature: tuple[float, float] = (0.01, 0.06)
-    joint_friction: tuple[float, float] = (0.001, 0.6)  # MuJoCo frictionloss [N m], at start-up; PhysX's is unitless
-    viscous_friction: bool = False  # the same draw also as viscous friction [N m s/rad]
-    max_delay: int = 4  # 5 ms physics substeps that still track the previous target, every episode
-    # foot-ground contact (MuJoCo solref time constant, solimp dmin, dmid) per environment at start-up, from the
-    # default of the training USD (and of MuJoCo) towards xsim_mujoco's floor (0.002 s, 0.99, 0.99). MuJoCo
-    # raises time constants below two physics steps to that floor: 10 ms with the 5 ms steps here, as xsim's
-    # 2 ms is at 1 ms steps.
-    contact_soft: tuple[float, float, float] = (0.02, 0.9, 0.95)
-    contact_hard: tuple[float, float, float] = (0.01, 0.99, 0.99)
+    # Direct legacy DRCfg() callers also use the selected robot's base friction.
+    friction: tuple[float, float] = field(default=FRICTION_RANGE, kw_only=True)
 
     @property
     def xi_dim(self) -> int:
         return XI_DIM_DR + ("contact" in self.terms) if self.terms else XI_DIM
 
     @classmethod
-    def for_dynamics(cls, terms: frozenset[str], dynamics: str = "default") -> "DRCfg":
-        """The ranges for a joint dynamics preset of src/supermimic/robots/tiangong3.py."""
-        if dynamics == "default":
-            return cls(terms)
-        if dynamics != "dexevt":
-            raise ValueError(f"unknown dynamics {dynamics!r}")
-        return cls(terms, ankle_armature=cls.armature, viscous_friction=True)
+    def for_dynamics(cls, terms: frozenset[str], dynamics: str = "default",
+                     ranges: RandomizationRangesCfg | None = None) -> "DRCfg":
+        cfg = randomization_ranges(ROBOT_NAME, dynamics) if ranges is None else ranges.validate()
+        return cls(terms=terms, **asdict(cfg))
 
 
 def to_unit(x, lo, hi):

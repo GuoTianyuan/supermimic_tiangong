@@ -18,7 +18,7 @@ src/supermimic/
   motions/              motion 加载、插值、活跃池与起点采样
   storage/              replay buffer
   tasks/tracking/
-    tracking_env_cfg.py 环境、command、obs、action、奖励项、终止阈值
+    tracking_env_cfg.py 环境、command、obs、action、DR 范围、奖励项、终止阈值
     agents/             WM、Actor、Critic、replay、优化器与训练调度配置
     configs/tiangong3.py 天工 full WBC 的具体配置入口
     config.py           旧 RewardCfg/checkpoint 的兼容适配
@@ -69,6 +69,24 @@ python scripts/training/train.py --config tiangong3_full_wbc \
 默认 `None` 表示延续已有的 checkpoint 继承规则；新训的参考窗仍为 1,6,...,46。
 `--print-config` 是解析请求的预览，`resolved=false` 表示还未读取 checkpoint。
 训练初始化后会保存实际分组 `config.json`，同时保留旧 `args.json` 和 checkpoint 的 flat args。
+
+DR 的具体范围现在集中在 `tracking_env_cfg.py::RandomizationRangesCfg`，由
+`env.events.ranges` 传到原仿真采样代码；不必再去 `envs/` 查硬编码数值。
+`dr=""` 只关闭额外 DR，基础摩擦、质心、关节偏置和重置扰动仍保留。
+full WBC 使用 `all,contact`：额外参数从第 3000 轮开始，push/delay 从第 6000 轮开始，
+分别用 2000 轮逐渐放大范围。100 Hz 控制 / 400 Hz 物理下，4 子步延迟是 0～10 ms。
+在 `full_wbc()` 的范围初始化之后，可以按下面方式覆盖单项：
+
+```python
+from dataclasses import replace
+
+env.events.ranges = replace(env.events.ranges, kp_scale=(0.8, 1.2))
+```
+
+范围会保存到 `config.json` 和 checkpoint 的 `args.dr_ranges`；续训恢复这些值，
+旧 checkpoint 则沿用机器人和 dynamics 对应的历史范围。显式预设与已保存范围不一致时会报错。
+CLI 覆盖 robot/dynamics 时，同步选择对应的默认范围；预设中另行自定义的范围保留。
+随机化评测也读取保存的范围；同一次评测不混用不同范围的 checkpoint。
 
 奖励权重写在配置中，仿真与可微想象共用 `mdp/rewards.py`；每项先加权，最后乘 dt。
 正奖励权重变化时，最大回报、采样价值上限和日志归一化同步计算。

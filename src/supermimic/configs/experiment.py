@@ -1,7 +1,7 @@
 """Adapt readable task/agent declarations to the stable runner CLI/checkpoint API."""
-from dataclasses import asdict, fields, is_dataclass
+from dataclasses import asdict, fields, is_dataclass, replace
 import os
-from supermimic.tasks.tracking.tracking_env_cfg import TrackingEnvCfg
+from supermimic.tasks.tracking.tracking_env_cfg import TrackingEnvCfg, RandomizationRangesCfg, randomization_ranges
 from supermimic.tasks.tracking.agents.supermimic_cfg import SuperMimicRunnerCfg
 from supermimic.tasks.tracking.config import from_task_cfg, reward_cfg, TRACKING_TERMS, PENALTY_TERMS
 
@@ -16,6 +16,7 @@ def load_config(name="default"):
         raise ValueError(f"Unknown training config: {name}")
     env, runner = TrackingEnvCfg(), SuperMimicRunnerCfg()
     env.scene.robot = os.environ.get("SUPERMIMIC_ROBOT", "g1")
+    env.events.ranges = randomization_ranges(env.scene.robot)
     return env, runner
 
 
@@ -26,7 +27,7 @@ def cli_defaults(name="default"):
     def visit(obj):
         for f in fields(obj):
             value = getattr(obj, f.name)
-            if f.name in ("rewards", "terminations"):
+            if f.name in ("rewards", "terminations", "ranges"):
                 continue
             if is_dataclass(value):
                 visit(value)
@@ -60,6 +61,51 @@ def resolve_reward_config(args, checkpoint=None):
     return cfg
 
 
+def saved_randomization_ranges(saved):
+    """Restore complete saved ranges, or the historical robot/dynamics defaults."""
+    default = randomization_ranges(saved.get("robot") or "g1", saved.get("dynamics") or "default")
+    values = saved.get("dr_ranges")
+    if values is None:
+        return default
+    unknown = set(values) - {f.name for f in fields(RandomizationRangesCfg)}
+    if unknown:
+        raise ValueError(f"Unknown DR range fields: {sorted(unknown)}")
+    merged = {**asdict(default), **values}
+    for name, value in merged.items():
+        if isinstance(value, list):
+            merged[name] = tuple(value)  # JSON round-trip
+    return RandomizationRangesCfg(**merged).validate()
+
+
+def requested_randomization_ranges(args):
+    name = getattr(args, "config", "default")
+    if name == "default":
+        return randomization_ranges(args.robot, getattr(args, "dynamics", None) or "default")
+    env = load_config(name)[0]
+    declared = env.events.ranges.validate()
+    original = randomization_ranges(env.scene.robot, env.scene.dynamics or "default")
+    selected = randomization_ranges(args.robot, getattr(args, "dynamics", None) or "default")
+    # CLI robot/dynamics overrides also select their historical DR defaults;
+    # values explicitly customized in the task preset remain authoritative.
+    return replace(declared, **{f.name: getattr(selected, f.name)
+                                for f in fields(declared)
+                                if getattr(declared, f.name) == getattr(original, f.name)}).validate()
+
+
+def resolve_randomization_config(args, checkpoint=None):
+    cfg = requested_randomization_ranges(args)
+    if checkpoint is not None:
+        saved = saved_randomization_ranges(checkpoint["args"])
+        if checkpoint["args"].get("dr_ranges") is not None:
+            if getattr(args, "config", "default") != "default" and cfg != saved:
+                raise ValueError("Preset DR ranges differ from checkpoint; resume with --config default to retain them")
+            cfg = saved
+        # Old checkpoints had no adjustable range config: retain their original
+        # dynamics-preset/CLI behavior (including intentionally changing dynamics).
+    args.dr_ranges = asdict(cfg)
+    return cfg
+
+
 def config_snapshot(args):
     """Read the actual namespace back into groups, including CLI overrides.
 
@@ -70,7 +116,7 @@ def config_snapshot(args):
     def update(obj):
         for f in fields(obj):
             value = getattr(obj, f.name)
-            if f.name in ("rewards", "terminations"):
+            if f.name in ("rewards", "terminations", "ranges"):
                 continue
             if is_dataclass(value):
                 update(value)
@@ -78,6 +124,8 @@ def config_snapshot(args):
                 setattr(obj, f.name, getattr(args, f.name))
     update(env)
     update(runner)
+    env.events.ranges = (saved_randomization_ranges(vars(args)) if getattr(args, "dr_ranges", None) is not None
+                         else requested_randomization_ranges(args))
     saved = getattr(args, "reward_cfg", None)
     if saved is not None:
         cfg = reward_cfg(getattr(args, "dynamics", None) or "default", saved)

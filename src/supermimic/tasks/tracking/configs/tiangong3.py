@@ -3,7 +3,7 @@
 Defaults describe four ranks (launch separately with torchrun --nproc_per_node=4).
 No GPU allocation, training start or server changes happen by loading this file.
 """
-from supermimic.tasks.tracking.tracking_env_cfg import TrackingEnvCfg
+from supermimic.tasks.tracking.tracking_env_cfg import TrackingEnvCfg, randomization_ranges
 from supermimic.tasks.tracking.agents.supermimic_cfg import SuperMimicRunnerCfg
 
 
@@ -24,6 +24,8 @@ def full_wbc():
     env.observations.hist = 10
     env.actions.action_noise = 0.1
 
+    # Concrete values (including base friction / reset noise) are declared in tracking_env_cfg.py.
+    env.events.ranges = randomization_ranges("tiangong3", "dexevt")
     env.events.dr = "all,contact"
     env.events.dr_curriculum = "3000,6000"
     env.events.dr_ramp = 2000

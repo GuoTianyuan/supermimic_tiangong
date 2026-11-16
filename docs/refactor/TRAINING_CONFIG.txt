@@ -35,3 +35,24 @@ Isaac RewardManager，也没有通过此整理改变模拟器。
   有限归一化，并由新增数值测试覆盖。
   没有可用 CUDA/NVML，未做 GPU 仿真、多卡训练或新策略效果验证。
   本次未启动或恢复服务器训练，未修改部署仓库。
+
+2026-11-16：补齐 EventsCfg 的实际随机化范围（基点 8254d7b）
+  原 EventsCfg 只有 dr / dr_curriculum / dr_ramp；现在 ranges 指向纯 Python 的
+  RandomizationRangesCfg。基础摩擦、质心、关节偏置、重置扰动与额外 DR 范围
+  集中定义在 tracking_env_cfg.py，runtime DRCfg 继承同一份声明。
+  Tiangong3 / DexEVT 的差异集中在 randomization_ranges()；原机器人 FRICTION_RANGE
+  导出仍兼容。full_wbc() 明确选择 Tiangong3/DexEVT、all,contact、3000/6000、ramp2000。
+  100 Hz/400 Hz 对应 2.5 ms 物理子步，max_delay4 为 0~10 ms；只修正文档旧单位。
+  接触范围仍为 (.02,.9,.95) -> (.01,.99,.99)，未改变阻尼比及其余 solimp 字段。
+  每次启动/每回合的采样位置和调用顺序保持；课程仍按 5% 步进。
+  新 checkpoint 保存 args.dr_ranges，续训恢复保存范围，旧 checkpoint 使用历史预设。
+  CLI 的 robot/dynamics 覆盖同步选择默认范围，任务配置中另行自定义的范围保留。
+  随机化评测读取保存范围，同一个 simulator 不混用不同范围的 checkpoint。
+  脚底点位仍是独立 bc_100hz_feet 实验，未合并或修改点位数量。
+
+  验证：本地 tg_supermimic 环境，CPU，pytest tests/unit：87 passed。
+  默认基础 DR / reset 扰动与重构前真实代码片段逐元素一致（零容差），随机数状态一致；
+  自定义范围到采样器、两个机器人及 dynamics 默认值、xi 维度、JSON 保存/恢复、
+  CLI 覆盖和 checkpoint 冲突检测通过。既有模型/奖励/learner/调度回归测试通过。
+  --print-config 确认显示完整 DR 范围；git diff --check 通过。
+  本机没有可用 CUDA/NVML；未做 GPU 仿真或服务器训练，未修改部署代码。

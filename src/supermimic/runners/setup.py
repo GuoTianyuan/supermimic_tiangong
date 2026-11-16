@@ -15,7 +15,7 @@ import copy
 import torch
 import torch.distributed as dist
 
-from supermimic.configs.experiment import resolve_reward_config, config_snapshot
+from supermimic.configs.experiment import resolve_reward_config, resolve_randomization_config, config_snapshot
 from supermimic.motions.pool import MotionPool
 from supermimic.motions.timing import configure_reference_timing
 from supermimic.envs.domain_randomization import DRCfg, parse_curriculum, parse_terms
@@ -93,7 +93,8 @@ def build_training(args, rank=0, world=1):
         print(f"[rank {RANK}] Checkpoint was trained with --dynamics {ck['args'].get('dynamics', 'default')}; "
               f"continuing with --dynamics {args.dynamics} (the world model has to re-adapt).", flush=True)
     set_dynamics(args.dynamics)
-    dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics)
+    dr_ranges = resolve_randomization_config(args, ck)
+    dr = DRCfg.for_dynamics(parse_terms(args.dr), args.dynamics, ranges=dr_ranges)
     task_reward_cfg = resolve_reward_config(args, ck)
     args.max_step_reward = task_reward_cfg.max_step_reward(CONTROL_DT)
     G_MAX = args.max_step_reward / (1 - args.gamma)

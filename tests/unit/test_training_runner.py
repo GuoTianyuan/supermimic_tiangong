@@ -41,7 +41,7 @@ def test_setup_initialization_and_restore_order_exact():
             target = ast.unparse(n.targets[0])
             if target in {'G_MAX', 'args.max_step_reward', 'args.training_config', 'args.reward_cfg'}:
                 return None
-            if target == 'task_reward_cfg':
+            if target in {'task_reward_cfg', 'dr_ranges'}:
                 return None
             return super().visit_Assign(n)
         def visit_Name(self, n):

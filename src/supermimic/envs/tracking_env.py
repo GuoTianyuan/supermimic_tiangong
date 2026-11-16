@@ -20,7 +20,7 @@ from isaaclab.utils import instantiate, replace
 from supermimic.envs.domain_randomization import ARMATURE, CONTACT, DELAY, JOINT_FRICTION, KD, KP, MASS, MASS_SEGMENTS, DRCfg, mass_segment, to_unit, uniform
 from supermimic.tasks.tracking.mdp import ACTION_CLIP, MDP, flatten_state
 from supermimic.motions.library import BIN_FRAMES, CONTROL_DT, MotionLib
-from supermimic.robots import FRICTION_RANGE, G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
+from supermimic.robots import G1_CFG, G1_JOINT_NAMES, TORSO_BODY, action_scale
 from supermimic.utils.rotations import mat_to_quat, quat_to_mat, so3_exp
 from supermimic.motions.sampling import update_bin_returns_
 
@@ -56,7 +56,7 @@ class TrackingSim:
         self.motion, self.mdp, self.gamma = motion, mdp, gamma
         self.eval_mode = eval_mode
         self.randomize = not eval_mode if randomize is None else randomize
-        self.dr = dr or DRCfg()
+        self.dr = (dr or DRCfg()).validate()
         dr_scale = {t: 1.0 for t in self.dr.terms} if dr_scale is None else dict(dr_scale)
         if not set(dr_scale) <= self.dr.terms or not all(0.0 <= s <= 1.0 for s in dr_scale.values()):
             raise ValueError(f"dr_scale {dr_scale} needs dr terms {sorted(self.dr.terms)} and scales in [0, 1]")
@@ -82,12 +82,12 @@ class TrackingSim:
         if not self.randomize:
             self.xi[:, 0] = 1.0
         else:
-            self.xi[:, 0] = torch.empty(self.N, device=dev).uniform_(*FRICTION_RANGE)
+            self.xi[:, 0] = torch.empty(self.N, device=dev).uniform_(*self.dr.friction)
             com = torch.stack(
                 (
-                    torch.empty(self.N, device=dev).uniform_(-0.025, 0.025),
-                    torch.empty(self.N, device=dev).uniform_(-0.05, 0.05),
-                    torch.empty(self.N, device=dev).uniform_(-0.05, 0.05),
+                    torch.empty(self.N, device=dev).uniform_(-self.dr.torso_com[0], self.dr.torso_com[0]),
+                    torch.empty(self.N, device=dev).uniform_(-self.dr.torso_com[1], self.dr.torso_com[1]),
+                    torch.empty(self.N, device=dev).uniform_(-self.dr.torso_com[2], self.dr.torso_com[2]),
                 ),
                 -1,
             )
@@ -129,7 +129,7 @@ class TrackingSim:
         # ground shapes (body == -1): lowest friction of the range, since MuJoCo takes the max of a pair
         shape_body = wp.to_torch(model.shape_body)
         mu_all = wp.to_torch(model.shape_material_mu)
-        mu_all[shape_body < 0] = FRICTION_RANGE[0] if self.randomize else 1.0
+        mu_all[shape_body < 0] = self.dr.friction[0] if self.randomize else 1.0
 
     def _apply_friction(self):
         self._mu_view[:] = self.xi[:, :1]
@@ -311,19 +311,19 @@ class TrackingSim:
         p, R, v, w, q, qd = (x.clone() for x in m.ref_state(frames))
         if self.reset_noise:
             p = p + torch.stack(
-                (torch.empty(n, device=dev).uniform_(-0.05, 0.05), torch.empty(n, device=dev).uniform_(-0.05, 0.05),
-                 torch.empty(n, device=dev).uniform_(-0.01, 0.01)), -1)  # fmt: skip
+                (torch.empty(n, device=dev).uniform_(-self.dr.reset_position[0], self.dr.reset_position[0]), torch.empty(n, device=dev).uniform_(-self.dr.reset_position[1], self.dr.reset_position[1]),
+                 torch.empty(n, device=dev).uniform_(-self.dr.reset_position[2], self.dr.reset_position[2])), -1)  # fmt: skip
             rv = torch.stack(
-                (torch.empty(n, device=dev).uniform_(-0.1, 0.1), torch.empty(n, device=dev).uniform_(-0.1, 0.1),
-                 torch.empty(n, device=dev).uniform_(-0.2, 0.2)), -1)  # fmt: skip
+                (torch.empty(n, device=dev).uniform_(-self.dr.reset_rotation[0], self.dr.reset_rotation[0]), torch.empty(n, device=dev).uniform_(-self.dr.reset_rotation[1], self.dr.reset_rotation[1]),
+                 torch.empty(n, device=dev).uniform_(-self.dr.reset_rotation[2], self.dr.reset_rotation[2])), -1)  # fmt: skip
             R = so3_exp(rv) @ R
             v = v + torch.stack(
-                (torch.empty(n, device=dev).uniform_(-0.5, 0.5), torch.empty(n, device=dev).uniform_(-0.5, 0.5),
-                 torch.empty(n, device=dev).uniform_(-0.2, 0.2)), -1)  # fmt: skip
+                (torch.empty(n, device=dev).uniform_(-self.dr.reset_lin_vel[0], self.dr.reset_lin_vel[0]), torch.empty(n, device=dev).uniform_(-self.dr.reset_lin_vel[1], self.dr.reset_lin_vel[1]),
+                 torch.empty(n, device=dev).uniform_(-self.dr.reset_lin_vel[2], self.dr.reset_lin_vel[2])), -1)  # fmt: skip
             w = w + torch.stack(
-                (torch.empty(n, device=dev).uniform_(-0.52, 0.52), torch.empty(n, device=dev).uniform_(-0.52, 0.52),
-                 torch.empty(n, device=dev).uniform_(-0.78, 0.78)), -1)  # fmt: skip
-            q = q + torch.empty_like(q).uniform_(-0.1, 0.1)
+                (torch.empty(n, device=dev).uniform_(-self.dr.reset_ang_vel[0], self.dr.reset_ang_vel[0]), torch.empty(n, device=dev).uniform_(-self.dr.reset_ang_vel[1], self.dr.reset_ang_vel[1]),
+                 torch.empty(n, device=dev).uniform_(-self.dr.reset_ang_vel[2], self.dr.reset_ang_vel[2])), -1)  # fmt: skip
+            q = q + torch.empty_like(q).uniform_(-self.dr.reset_joint_pos, self.dr.reset_joint_pos)
         q = torch.clamp(q, self.mdp.kin.q_lo, self.mdp.kin.q_hi)
         quat = mat_to_quat(R)
         pose = torch.cat((p + self.scene.env_origins[env_ids], quat[:, 1:4], quat[:, 0:1]), -1)
@@ -339,7 +339,7 @@ class TrackingSim:
         self.ep_disc_ret[env_ids] = 0.0
         self.ep_ret[env_ids] = 0.0
         if self.randomize:
-            self.xi[env_ids, 1:30] = torch.empty(n, 29, device=dev).uniform_(-0.01, 0.01)
+            self.xi[env_ids, 1:30] = torch.empty(n, 29, device=dev).uniform_(*self.dr.joint_offset)
         if self.reset_a_prev == "pose":
             # inverse of the joint target in step()
             a0 = (q - self.default_q - self.xi[env_ids, 1:30]) / self.alpha

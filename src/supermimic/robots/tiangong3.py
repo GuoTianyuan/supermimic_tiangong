@@ -8,6 +8,7 @@ friction and gain/mass/armature errors are opt-in randomization (src/supermimic/
 import os
 
 from supermimic.utils.paths import DATA_ROOT
+from supermimic.tasks.tracking.tracking_env_cfg import randomization_ranges
 import re
 import xml.etree.ElementTree as ET
 
@@ -92,7 +93,7 @@ def mass_segment(link):
 
 # Robot-ground friction drawn per environment: DexEVT's static friction range (EventCfg physics_material),
 # which holds xsim_mujoco's 1.5.
-FRICTION_RANGE = (0.6, 1.6)
+FRICTION_RANGE = randomization_ranges("tiangong3").friction
 
 def _actuators():
     acts = {}

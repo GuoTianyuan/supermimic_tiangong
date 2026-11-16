@@ -55,6 +55,7 @@ from supermimic.robots.kinematics import G1Kinematics
 from supermimic.tasks.tracking.mdp import OBS_DIM, MDP, reward_cfg
 from supermimic.motions.library import CONTROL_DT, MotionLib, goal_frame_dim, motion_group, parse_goal_drop
 from supermimic.motions.timing import checkpoint_goal_start, checkpoint_goal_stride
+from supermimic.configs.experiment import saved_randomization_ranges
 from supermimic.models import Policy
 from supermimic.robots import DEFAULT_MOTION, default_joint_pos_list, set_dynamics
 args.motion_dir = args.motion_dir or DEFAULT_MOTION
@@ -79,7 +80,11 @@ kin = G1Kinematics(dev)
 motion = MotionLib.from_dir(args.motion_dir, kin, dev)
 mdp = MDP(kin, motion, torch.tensor(default_joint_pos_list(), device=dev), reward_cfg(DYNAMICS))
 C = len(motion.names)
-dr = DRCfg.for_dynamics(parse_terms(args.dr), DYNAMICS)
+range_source = (torch.load(args.ckpt[0], map_location="cpu")["args"] if args.ckpt else
+                (json.load(open(os.path.join(args.run_dir, "args.json")))
+                 if os.path.isfile(os.path.join(args.run_dir, "args.json")) else {}))
+eval_ranges = saved_randomization_ranges({**range_source, "robot": args.robot, "dynamics": DYNAMICS})
+dr = DRCfg.for_dynamics(parse_terms(args.dr), DYNAMICS, ranges=eval_ranges)
 RANDOMIZE = args.dr not in ("", "none")
 R = args.repeats
 SUFFIX = "" if not RANDOMIZE else "_dr-" + args.dr.replace(",", "+")
@@ -107,6 +112,8 @@ def evaluate(env: TrackingSim, ck: dict, record: str | None = None) -> dict:
     env.G_max = mdp.max_step_reward / (1 - env.gamma)
     if a_.get("robot", "g1") != args.robot:
         raise ValueError("Checkpoint robot does not match --robot")
+    if RANDOMIZE and saved_randomization_ranges({**a_, "robot": args.robot, "dynamics": DYNAMICS}) != eval_ranges:
+        raise ValueError("Randomized evaluation cannot mix checkpoints with different DR ranges in one simulator")
     K, Hh = a_["goal_frames"], a_["hist"]
     motion.goal_stride = checkpoint_goal_stride(a_)
     motion.goal_start = checkpoint_goal_start(a_)

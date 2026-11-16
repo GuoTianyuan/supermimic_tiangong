@@ -79,7 +79,7 @@ class Canonical(ConfigDefaults):
         for kw in node.keywords:
             if kw.arg=='usd_path' and 'default_ground_plane.usda' in ast.unparse(kw.value):
                 kw.value=ast.Constant(value='asset:ground/default_ground_plane.usda')
-        return self.generic_visit(node)
+        return super().visit_Call(node)
 
 
 def fingerprint(source,runner=False):
@@ -103,7 +103,7 @@ def test_training_cli_unchanged(monkeypatch):
     assert (a.robot,a.num_envs,a.wm_prediction,a.act_soft_clip)==('tiangong3',4096,'velocity_integrated',False)
 
 
-@pytest.mark.parametrize('old', [p for p in [*MOVES][:15] if Path(p).name not in {'mdp.py','networks.py','robot.py','env.py','train.py'}])
+@pytest.mark.parametrize('old', [p for p in [*MOVES][:15] if Path(p).name not in {'mdp.py','networks.py','robot.py','env.py','train.py','dr.py'}])
 def test_numerical_modules_and_training_flow_unchanged(old):
     baseline=json.loads(BASELINE.read_text())['ast']
     if old not in baseline:pytest.skip('Non-source mapping')
